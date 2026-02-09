@@ -254,8 +254,7 @@ struct LaunchpadView: View {
                                         }
                                         if shouldRenderPage(index, totalPages: pages.count) {
                                             LazyVGrid(columns: config.gridItems, spacing: config.rowSpacing) {
-                                                ForEach(pageItems.indices, id: \.self) { localOffset in
-                                                    let item = pageItems[localOffset]
+                                                ForEach(Array(pageItems.enumerated()), id: \.element.id) { localOffset, item in
                                                     let globalIndex = index * config.itemsPerPage + localOffset
                                                     itemDraggable(
                                                         item: item,
