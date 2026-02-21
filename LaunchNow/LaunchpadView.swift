@@ -81,6 +81,9 @@ struct LaunchpadView: View {
     @State private var interactivePageOffset: CGFloat = 0
     @State private var isPageTransitioning: Bool = false
 
+    // Performance: cache pages array to avoid recomputing on every interactivePageOffset change
+    @State private var cachedPages: [[LaunchpadItem]] = []
+
     private var isFolderOpen: Bool { appStore.openFolder != nil }
     private var isPagingInteractionActive: Bool {
         isUserSwiping || interactivePageOffset != 0 || isPageTransitioning
@@ -95,8 +98,12 @@ struct LaunchpadView: View {
     }
     
     var pages: [[LaunchpadItem]] {
-        let items = draggingItem != nil ? visualItems : filteredItems
-        return makePages(from: items)
+        // During drag: recompute from visualItems in real time; otherwise use cache to avoid array allocation on every swipe frame
+        draggingItem != nil ? makePages(from: visualItems) : (cachedPages.isEmpty ? makePages(from: filteredItems) : cachedPages)
+    }
+
+    private func rebuildPages() {
+        cachedPages = makePages(from: filteredItems)
     }
     
     private var currentItems: [LaunchpadItem] {
@@ -300,8 +307,16 @@ struct LaunchpadView: View {
                         .onTapGesture {
                             NSApp.keyWindow?.makeFirstResponder(nil)
                         }
-                        .onAppear { }
-                        
+                        .onAppear {
+                            rebuildPages()
+                            // Pre-warm icon cache for adjacent pages so first swipe is instant
+                            AppCacheManager.shared.smartPreloadIcons(
+                                for: appStore.items,
+                                currentPage: appStore.currentPage,
+                                itemsPerPage: config.itemsPerPage
+                            )
+                        }
+                        .onChange(of: appStore.filteredItems) { rebuildPages() }
                         .onChange(of: appStore.handoffDraggingApp) {
                             if appStore.openFolder == nil, appStore.handoffDraggingApp != nil {
                                 startHandoffDragIfNeeded(geo: geo, columnWidth: columnWidth, appHeight: appHeight, iconSize: iconSize)
@@ -949,9 +964,22 @@ extension LaunchpadView {
 // MARK: - View builders
 extension LaunchpadView {
     private func shouldRenderPage(_ index: Int, totalPages: Int) -> Bool {
-        // 只渲染当前页和相邻页，减少滚动时的重排开销
-        if totalPages <= 3 { return true }
-        return abs(index - appStore.currentPage) <= 1
+        // Current page is always rendered
+        if index == appStore.currentPage { return true }
+        // Adjacent pages are rendered only while swiping or transitioning,
+        // so they are ready the moment they slide into view.
+        // isPageTransitioning stays true for 0.25s after navigation,
+        // keeping them alive for rapid consecutive swipes.
+        return isPagingInteractionActive && abs(index - appStore.currentPage) <= 1
+    }
+
+    @ViewBuilder
+    private func withMatchedGeometry(_ content: some View, id: String) -> some View {
+        if draggingItem != nil {
+            content.matchedGeometryEffect(id: id, in: reorderNamespace)
+        } else {
+            content
+        }
     }
 
     @ViewBuilder
@@ -991,31 +1019,24 @@ extension LaunchpadView {
                 isSelected: isSelected,
                 shouldAllowHover: shouldAllowHover,
                 externalScale: isCenterCreatingTarget ? 1.2 : nil,
+                isAnimating: isPagingInteractionActive,
                 onTap: { if draggingItem == nil { handleItemTap(item) } }
             )
+            .equatable()
             .environmentObject(appStore)
             .frame(height: appHeight)
             // 保持稳定的视图身份，避免在文件夹更新后中断拖拽手势
             .id(item.id)
 
-            let baseWithGeometry: AnyView = {
-                if draggingItem != nil {
-                    return AnyView(base.matchedGeometryEffect(id: item.id, in: reorderNamespace))
-                } else {
-                    return AnyView(base)
-                }
-            }()
-
-            // 统一：对“刚落下的项”做淡入（无论是否可拖拽/是否在搜索模式）
-            let baseWithFade = baseWithGeometry
-                .opacity((lastDroppedItemID == item.id) ? 0 : 1)
-                .animation(LNAnimations.itemAppear, value: lastDroppedItemID)
-
+            // Use @ViewBuilder conditional instead of AnyView to allow SwiftUI structural diffing
             if appStore.searchText.isEmpty && !isFolderOpen {
                 let isDraggingThisTile = (draggingItem == item)
 
-                baseWithFade
-                    // 拖拽中的该 tile 隐形
+                withMatchedGeometry(base, id: item.id)
+                    // Fade in newly dropped item
+                    .opacity((lastDroppedItemID == item.id) ? 0 : 1)
+                    .animation(LNAnimations.itemAppear, value: lastDroppedItemID)
+                    // Hide tile while it is being dragged
                     .opacity((isDraggingThisTile && !isSettlingDrop) ? 0 : 1)
                     .animation(LNAnimations.itemAppear, value: isSettlingDrop)
                     .animation(LNAnimations.itemAppear, value: pendingDropIndex)
@@ -1027,13 +1048,16 @@ extension LaunchpadView {
                             }
                             .onEnded { _ in
                                 guard draggingItem != nil else { return }
-                                
-                                // 使用统一的拖拽结束处理逻辑
+
+                                // Finalize drag operation
                                 finalizeDragOperation(containerSize: containerSize, columnWidth: columnWidth, appHeight: appHeight, iconSize: iconSize)
                             }
                     )
             } else {
-                baseWithFade
+                withMatchedGeometry(base, id: item.id)
+                    // Fade in newly dropped item
+                    .opacity((lastDroppedItemID == item.id) ? 0 : 1)
+                    .animation(LNAnimations.itemAppear, value: lastDroppedItemID)
             }
         }
     }
