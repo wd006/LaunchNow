@@ -9,7 +9,6 @@ struct LaunchpadItemButton: View {
     let isSelected: Bool
     var shouldAllowHover: Bool = true
     var externalScale: CGFloat? = nil
-    var isAnimating: Bool = false
     let onTap: () -> Void
     let onDoubleClick: (() -> Void)?
     
@@ -46,7 +45,6 @@ struct LaunchpadItemButton: View {
             self.isSelected = isSelected
             self.shouldAllowHover = shouldAllowHover
             self.externalScale = externalScale
-            self.isAnimating = isAnimating
             self.onTap = onTap
             self.onDoubleClick = onDoubleClick
         }
@@ -77,28 +75,15 @@ struct LaunchpadItemButton: View {
                     }()
                     
                     if isFolderIcon {   
-                        // 增加文件夹的检测区域，使用更大的响应区域
-                        // Skip glassEffect during page swipe to avoid expensive per-frame background resampling
-                        if isAnimating {
-                            RoundedRectangle(cornerRadius: iconSize * 0.2)
-                                .foregroundStyle(Color.clear)
-                                .frame(width: iconSize * 0.8, height: iconSize * 0.8)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: iconSize * 0.2)
-                                        .stroke(Color.foundary.opacity(0.5), lineWidth: 2)
-                                        .shadow(radius: 5)
-                                )
-                        } else {
-                            RoundedRectangle(cornerRadius: iconSize * 0.2)
-                                .foregroundStyle(Color.clear)
-                                .frame(width: iconSize * 0.8, height: iconSize * 0.8)
-                                .glassEffect(.clear, in: RoundedRectangle(cornerRadius: iconSize * 0.2))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: iconSize * 0.2)
-                                        .stroke(Color.foundary.opacity(0.5), lineWidth: 2)
-                                        .shadow(radius: 5)
-                                )
-                        }
+                        RoundedRectangle(cornerRadius: iconSize * 0.2)
+                            .foregroundStyle(Color.clear)
+                            .frame(width: iconSize * 0.8, height: iconSize * 0.8)
+                            .glassEffect(.clear, in: RoundedRectangle(cornerRadius: iconSize * 0.2))
+                            .shadow(radius: 3)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: iconSize * 0.2)
+                                    .stroke(Color.foundary.opacity(0.5), lineWidth: 2)
+                            )
                     }
                     
                     Image(nsImage: renderedIcon)
@@ -186,7 +171,6 @@ extension LaunchpadItemButton: Equatable {
         lhs.labelWidth == rhs.labelWidth &&
         lhs.isSelected == rhs.isSelected &&
         lhs.shouldAllowHover == rhs.shouldAllowHover &&
-        lhs.externalScale == rhs.externalScale &&
-        lhs.isAnimating == rhs.isAnimating
+        lhs.externalScale == rhs.externalScale
     }
 }
