@@ -81,6 +81,9 @@ struct LaunchpadView: View {
     @State private var interactivePageOffset: CGFloat = 0
     @State private var isPageTransitioning: Bool = false
 
+    // Performance: cache pages array to avoid recomputing on every interactivePageOffset change
+    @State private var cachedPages: [[LaunchpadItem]] = []
+
     private var isFolderOpen: Bool { appStore.openFolder != nil }
     private var isPagingInteractionActive: Bool {
         isUserSwiping || interactivePageOffset != 0 || isPageTransitioning
@@ -95,8 +98,12 @@ struct LaunchpadView: View {
     }
     
     var pages: [[LaunchpadItem]] {
-        let items = draggingItem != nil ? visualItems : filteredItems
-        return makePages(from: items)
+        // During drag: recompute from visualItems in real time; otherwise use cache to avoid array allocation on every swipe frame
+        draggingItem != nil ? makePages(from: visualItems) : (cachedPages.isEmpty ? makePages(from: filteredItems) : cachedPages)
+    }
+
+    private func rebuildPages() {
+        cachedPages = makePages(from: filteredItems)
     }
     
     private var currentItems: [LaunchpadItem] {
@@ -300,8 +307,16 @@ struct LaunchpadView: View {
                         .onTapGesture {
                             NSApp.keyWindow?.makeFirstResponder(nil)
                         }
-                        .onAppear { }
-                        
+                        .onAppear {
+                            rebuildPages()
+                            // Pre-warm icon cache for adjacent pages so first swipe is instant
+                            AppCacheManager.shared.smartPreloadIcons(
+                                for: appStore.items,
+                                currentPage: appStore.currentPage,
+                                itemsPerPage: config.itemsPerPage
+                            )
+                        }
+                        .onChange(of: appStore.filteredItems) { rebuildPages() }
                         .onChange(of: appStore.handoffDraggingApp) {
                             if appStore.openFolder == nil, appStore.handoffDraggingApp != nil {
                                 startHandoffDragIfNeeded(geo: geo, columnWidth: columnWidth, appHeight: appHeight, iconSize: iconSize)
@@ -949,9 +964,22 @@ extension LaunchpadView {
 // MARK: - View builders
 extension LaunchpadView {
     private func shouldRenderPage(_ index: Int, totalPages: Int) -> Bool {
-        // 只渲染当前页和相邻页，减少滚动时的重排开销
-        if totalPages <= 3 { return true }
-        return abs(index - appStore.currentPage) <= 1
+        // Current page is always rendered
+        if index == appStore.currentPage { return true }
+        // Adjacent pages are rendered only while swiping or transitioning,
+        // so they are ready the moment they slide into view.
+        // isPageTransitioning stays true for 0.25s after navigation,
+        // keeping them alive for rapid consecutive swipes.
+        return isPagingInteractionActive && abs(index - appStore.currentPage) <= 1
+    }
+
+    @ViewBuilder
+    private func withMatchedGeometry(_ content: some View, id: String) -> some View {
+        if draggingItem != nil {
+            content.matchedGeometryEffect(id: id, in: reorderNamespace)
+        } else {
+            content
+        }
     }
 
     @ViewBuilder
@@ -991,31 +1019,24 @@ extension LaunchpadView {
                 isSelected: isSelected,
                 shouldAllowHover: shouldAllowHover,
                 externalScale: isCenterCreatingTarget ? 1.2 : nil,
+                isAnimating: isPagingInteractionActive,
                 onTap: { if draggingItem == nil { handleItemTap(item) } }
             )
+            .equatable()
             .environmentObject(appStore)
             .frame(height: appHeight)
             // 保持稳定的视图身份，避免在文件夹更新后中断拖拽手势
             .id(item.id)
 
-            let baseWithGeometry: AnyView = {
-                if draggingItem != nil {
-                    return AnyView(base.matchedGeometryEffect(id: item.id, in: reorderNamespace))
-                } else {
-                    return AnyView(base)
-                }
-            }()
-
-            // 统一：对“刚落下的项”做淡入（无论是否可拖拽/是否在搜索模式）
-            let baseWithFade = baseWithGeometry
-                .opacity((lastDroppedItemID == item.id) ? 0 : 1)
-                .animation(LNAnimations.itemAppear, value: lastDroppedItemID)
-
+            // Use @ViewBuilder conditional instead of AnyView to allow SwiftUI structural diffing
             if appStore.searchText.isEmpty && !isFolderOpen {
                 let isDraggingThisTile = (draggingItem == item)
 
-                baseWithFade
-                    // 拖拽中的该 tile 隐形
+                withMatchedGeometry(base, id: item.id)
+                    // Fade in newly dropped item
+                    .opacity((lastDroppedItemID == item.id) ? 0 : 1)
+                    .animation(LNAnimations.itemAppear, value: lastDroppedItemID)
+                    // Hide tile while it is being dragged
                     .opacity((isDraggingThisTile && !isSettlingDrop) ? 0 : 1)
                     .animation(LNAnimations.itemAppear, value: isSettlingDrop)
                     .animation(LNAnimations.itemAppear, value: pendingDropIndex)
@@ -1027,13 +1048,16 @@ extension LaunchpadView {
                             }
                             .onEnded { _ in
                                 guard draggingItem != nil else { return }
-                                
-                                // 使用统一的拖拽结束处理逻辑
+
+                                // Finalize drag operation
                                 finalizeDragOperation(containerSize: containerSize, columnWidth: columnWidth, appHeight: appHeight, iconSize: iconSize)
                             }
                     )
             } else {
-                baseWithFade
+                withMatchedGeometry(base, id: item.id)
+                    // Fade in newly dropped item
+                    .opacity((lastDroppedItemID == item.id) ? 0 : 1)
+                    .animation(LNAnimations.itemAppear, value: lastDroppedItemID)
             }
         }
     }
@@ -1206,6 +1230,15 @@ extension LaunchpadView {
         let delta = abs(deltaX) >= abs(deltaY) ? deltaX : -deltaY // vertical swipes map to horizontal
         switch phase {
         case .began:
+            // If a previous swipe's settle-animation is still in flight, snap currentPage to the
+            // nearest page before resetting io=0, so the visual doesn't jump to the wrong page.
+            if interactivePageOffset != 0 {
+                if interactivePageOffset <= -pageWidth / 2 {
+                    appStore.currentPage = min(appStore.currentPage + 1, pages.count - 1)
+                } else if interactivePageOffset >= pageWidth / 2 {
+                    appStore.currentPage = max(appStore.currentPage - 1, 0)
+                }
+            }
             isUserSwiping = true
             accumulatedScrollX = 0
             interactivePageOffset = 0
@@ -1233,21 +1266,53 @@ extension LaunchpadView {
             }
             interactivePageOffset = proposed
         case .ended, .cancelled:
-            // 灵敏度越大阈值越小（与原逻辑一致）
+            // Larger sensitivity → smaller threshold (consistent with original logic)
             let threshold = pageWidth * (0.0225 / max(appStore.scrollSensitivity, 0.001))
+            let targetPage: Int
             if accumulatedScrollX <= -threshold {
-                // 向左翻到下一页
-                navigateToNextPage()
+                targetPage = min(appStore.currentPage + 1, pages.count - 1)
             } else if accumulatedScrollX >= threshold {
-                // 向右翻到上一页
-                navigateToPreviousPage()
+                targetPage = max(appStore.currentPage - 1, 0)
+            } else {
+                targetPage = appStore.currentPage
             }
-            // 手势结束后将交互偏移平滑归零
-            withAnimation(LNAnimations.springFast) {
-                interactivePageOffset = 0
-            }
+
+            // The offset that, relative to currentPage, puts targetPage at the center.
+            // e.g. currentPage=0, targetPage=1, pageWidth=1000 → targetOffset=-1000
+            // So hStackOffset = -(0*1000) + (-1000) = -1000 = -(1*1000) ✓
+            let targetOffset = -CGFloat(targetPage - appStore.currentPage) * pageWidth
+
+            // Capture current page so the completion block can guard against interruption
+            let expectedPage = appStore.currentPage
+
             accumulatedScrollX = 0
             isUserSwiping = false
+
+            // KEY INSIGHT: never change currentPage during the animation.
+            // Animate interactivePageOffset to ±pageWidth so the content slides
+            // continuously like a scroll view — no discontinuity at any frame.
+            // currentPage is only updated in the completion block, atomically with
+            // resetting io to 0, so the visual position is identical before and after.
+            withAnimation(.spring(duration: 0.35, bounce: 0), completionCriteria: .removed) {
+                interactivePageOffset = targetOffset
+            } completion: {
+                // Guard: bail if a new swipe started or another navigation changed currentPage
+                guard !isUserSwiping, appStore.currentPage == expectedPage else { return }
+                // Set isPageTransitioning = true BEFORE the swap so isPagingInteractionActive
+                // stays true during the render that processes the swap. Without this, there is
+                // a brief frame where isPagingInteractionActive = false, causing adjacent pages
+                // to unmount and immediately remount — producing a visible layout jitter.
+                isPageTransitioning = true
+                // Atomically commit the new page with no animation.
+                // Visual before: -(expectedPage * W) + targetOffset = -(targetPage * W)
+                // Visual after:  -(targetPage  * W) + 0             = -(targetPage * W)  ✓
+                var t = Transaction(animation: nil)
+                t.disablesAnimations = true
+                withTransaction(t) {
+                    appStore.currentPage = targetPage
+                    interactivePageOffset = 0
+                }
+            }
         default:
             break
         }

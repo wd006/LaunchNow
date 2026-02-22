@@ -9,6 +9,7 @@ struct LaunchpadItemButton: View {
     let isSelected: Bool
     var shouldAllowHover: Bool = true
     var externalScale: CGFloat? = nil
+    var isAnimating: Bool = false
     let onTap: () -> Void
     let onDoubleClick: (() -> Void)?
     
@@ -29,23 +30,26 @@ struct LaunchpadItemButton: View {
         return false
     }
     
-    init(item: LaunchpadItem,
-         iconSize: CGFloat = 72,
-         labelWidth: CGFloat = 80,
-         isSelected: Bool = false,
-          shouldAllowHover: Bool = true,
-          externalScale: CGFloat? = nil,
-         onTap: @escaping () -> Void,
-         onDoubleClick: (() -> Void)? = nil) {
-        self.item = item
-        self.iconSize = iconSize
-        self.labelWidth = labelWidth
-        self.isSelected = isSelected
-        self.shouldAllowHover = shouldAllowHover
-        self.externalScale = externalScale
-        self.onTap = onTap
-        self.onDoubleClick = onDoubleClick
-    }
+    init(
+        item: LaunchpadItem,
+        iconSize: CGFloat = 72,
+        labelWidth: CGFloat = 80,
+        isSelected: Bool = false,
+        shouldAllowHover: Bool = true,
+        externalScale: CGFloat? = nil,
+        isAnimating: Bool = false,
+        onTap: @escaping () -> Void,
+        onDoubleClick: (() -> Void)? = nil) {
+            self.item = item
+            self.iconSize = iconSize
+            self.labelWidth = labelWidth
+            self.isSelected = isSelected
+            self.shouldAllowHover = shouldAllowHover
+            self.externalScale = externalScale
+            self.isAnimating = isAnimating
+            self.onTap = onTap
+            self.onDoubleClick = onDoubleClick
+        }
 
     var body: some View {
         Button(action: handleTap) {
@@ -72,18 +76,29 @@ struct LaunchpadItemButton: View {
                         }
                     }()
                     
-                    if isFolderIcon {
-                        
+                    if isFolderIcon {   
                         // 增加文件夹的检测区域，使用更大的响应区域
-                        RoundedRectangle(cornerRadius: iconSize * 0.2)
-                            .foregroundStyle(Color.clear)
-                            .frame(width: iconSize * 0.8, height: iconSize * 0.8)
-                            .glassEffect(in: RoundedRectangle(cornerRadius: iconSize * 0.2))
-                            .shadow(radius: 3)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: iconSize * 0.2)
-                                    .stroke(Color.foundary.opacity(0.5), lineWidth: 2)
-                            )
+                        // Skip glassEffect during page swipe to avoid expensive per-frame background resampling
+                        if isAnimating {
+                            RoundedRectangle(cornerRadius: iconSize * 0.2)
+                                .fill(Color.white.opacity(0.15))
+                                .frame(width: iconSize * 0.8, height: iconSize * 0.8)
+                                .shadow(radius: 3)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: iconSize * 0.2)
+                                        .stroke(Color.foundary.opacity(0.5), lineWidth: 2)
+                                )
+                        } else {
+                            RoundedRectangle(cornerRadius: iconSize * 0.2)
+                                .foregroundStyle(Color.clear)
+                                .frame(width: iconSize * 0.8, height: iconSize * 0.8)
+                                .glassEffect(in: RoundedRectangle(cornerRadius: iconSize * 0.2))
+                                .shadow(radius: 3)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: iconSize * 0.2)
+                                        .stroke(Color.foundary.opacity(0.5), lineWidth: 2)
+                                )
+                        }
                     }
                     
                     Image(nsImage: renderedIcon)
@@ -142,5 +157,20 @@ struct LaunchpadItemButton: View {
         }
         
         lastTapTime = now
+    }
+}
+
+// Equatable conformance intentionally excludes closures (onTap, onDoubleClick).
+// This allows SwiftUI to skip body re-evaluation when only scroll offset changes,
+// while still re-rendering when any visible property actually changes.
+extension LaunchpadItemButton: Equatable {
+    static func == (lhs: LaunchpadItemButton, rhs: LaunchpadItemButton) -> Bool {
+        lhs.item == rhs.item &&
+        lhs.iconSize == rhs.iconSize &&
+        lhs.labelWidth == rhs.labelWidth &&
+        lhs.isSelected == rhs.isSelected &&
+        lhs.shouldAllowHover == rhs.shouldAllowHover &&
+        lhs.externalScale == rhs.externalScale &&
+        lhs.isAnimating == rhs.isAnimating
     }
 }
