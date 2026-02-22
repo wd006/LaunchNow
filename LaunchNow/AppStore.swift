@@ -2030,14 +2030,33 @@ final class AppStore: ObservableObject {
     private var pendingNewPage: (pageIndex: Int, itemCount: Int)? = nil
     
     func createNewPageForDrag() -> Bool {
+        // 同一次拖拽未落地前，避免重复创建空白页
+        if let pending = pendingNewPage {
+            let pageStart = pending.pageIndex * pending.itemCount
+            let pageEnd = min(pageStart + pending.itemCount, items.count)
+            if pageStart < items.count {
+                let pageSlice = Array(items[pageStart..<pageEnd])
+                let hasNonEmptyItems = pageSlice.contains { item in
+                    if case .empty = item { return false } else { return true }
+                }
+                if !hasNonEmptyItems {
+                    return false
+                }
+            }
+            pendingNewPage = nil
+        }
+
         let itemsPerPage = self.itemsPerPage
         let currentPages = (items.count + itemsPerPage - 1) / itemsPerPage
         let newPageIndex = currentPages
         
-        // 为新页添加empty占位符
+        // 为新页一次性追加 empty 占位符，避免多次发布导致卡顿
+        var expandedItems = items
+        expandedItems.reserveCapacity(items.count + itemsPerPage)
         for _ in 0..<itemsPerPage {
-            items.append(.empty(UUID().uuidString))
+            expandedItems.append(.empty(UUID().uuidString))
         }
+        items = expandedItems
         
         // 记录待处理的新页信息
         pendingNewPage = (pageIndex: newPageIndex, itemCount: itemsPerPage)
