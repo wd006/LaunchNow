@@ -733,6 +733,7 @@ struct LaunchpadView: View {
                 // 重置拖拽创建文件夹相关状态，确保后续拖拽功能正常
                 appStore.isDragCreatingFolder = false
                 appStore.folderCreationTarget = nil
+                clearHoveringState()
                 // 与普通拖拽结束保持一致的清理
                 appStore.cleanupUnusedNewPage()
                 appStore.removeEmptyPages()
@@ -1675,6 +1676,7 @@ extension LaunchpadView {
                     resetDragPagingState()
                     appStore.isDragCreatingFolder = false
                     appStore.folderCreationTarget = nil
+                    clearHoveringState()
                     isSettlingDrop = false
                     dragPreviewOpacity = 1.0
                     clampSelection()
@@ -1721,6 +1723,7 @@ extension LaunchpadView {
                     pendingDropIndex = nil
                     dragOriginalIndex = nil
                     resetDragPagingState()
+                    clearHoveringState()
                     isSettlingDrop = false
                     dragPreviewOpacity = 1.0
                     clampSelection()
@@ -1750,6 +1753,7 @@ extension LaunchpadView {
                         pendingDropIndex = nil
                         dragOriginalIndex = nil
                         resetDragPagingState()
+                        clearHoveringState()
                         isSettlingDrop = false
                         dragPreviewOpacity = 1.0
                         clampSelection()
@@ -1834,6 +1838,7 @@ extension LaunchpadView {
                 pendingDropIndex = nil
                 dragOriginalIndex = nil
                 resetDragPagingState()
+                clearHoveringState()
                 isSettlingDrop = false
                 dragPreviewOpacity = 1.0
                 clampSelection()
@@ -1853,6 +1858,7 @@ extension LaunchpadView {
                 pendingDropIndex = nil
                 dragOriginalIndex = nil
                 resetDragPagingState()
+                clearHoveringState()
                 isSettlingDrop = false
                 dragPreviewOpacity = 1.0
                 clampSelection()
