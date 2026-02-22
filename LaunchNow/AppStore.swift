@@ -2040,7 +2040,11 @@ final class AppStore: ObservableObject {
                     if case .empty = item { return false } else { return true }
                 }
                 if !hasNonEmptyItems {
-                    return false
+                    // 已经翻到该 pending 空页后，允许继续向后创建新页，
+                    // 否则会出现“同一次拖拽翻了几页后无法继续翻页”。
+                    if currentPage < pending.pageIndex {
+                        return false
+                    }
                 }
             }
             pendingNewPage = nil

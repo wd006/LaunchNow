@@ -29,6 +29,11 @@ private class PageFlipManager: ObservableObject {
             self.isCooldown = false
         }
     }
+
+    func reset() {
+        lastFlipTime = nil
+        isCooldown = false
+    }
 }
 
 struct LaunchpadView: View {
@@ -84,6 +89,7 @@ struct LaunchpadView: View {
     // 跟手翻页：交互偏移（仅在精确滚动手势进行中使用）
     @State private var interactivePageOffset: CGFloat = 0
     @State private var isPageTransitioning: Bool = false
+    @State private var isDragEdgeFlipping: Bool = false
 
     // Performance: cache pages array to avoid recomputing on every interactivePageOffset change
     @State private var cachedPages: [[LaunchpadItem]] = []
@@ -324,7 +330,9 @@ struct LaunchpadView: View {
                         .onChange(of: appStore.filteredItems) { rebuildPages() }
                         .onChange(of: appStore.gridRefreshTrigger) {
                             // Soft refresh only: update cached page slices without rebuilding grid identity.
-                            rebuildPages()
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                                rebuildPages()
+                            }
                         }
                         .onChange(of: appStore.handoffDraggingApp) {
                             if appStore.openFolder == nil, appStore.handoffDraggingApp != nil {
@@ -535,9 +543,9 @@ struct LaunchpadView: View {
                          pendingDropIndex = nil
                          appStore.isDragCreatingFolder = false
                          appStore.folderCreationTarget = nil
-                         pageFlipManager.isCooldown = false
+                         isSettlingDrop = false
+                         resetDragPagingState()
                          if let monitor = dragContinuationMonitor { NSEvent.removeMonitor(monitor); dragContinuationMonitor = nil }
-                         isHandoffDragging = false
                          clampSelection()
                      }
                  }
@@ -604,6 +612,7 @@ struct LaunchpadView: View {
         guard draggingItem == nil, let app = appStore.handoffDraggingApp else { return }
         // 更新几何上下文
         captureGridGeometry(geo, columnWidth: columnWidth, appHeight: appHeight, iconSize: iconSize)
+        resetDragPagingState()
 
         // 初始位置：屏幕 -> 网格局部
         let screenPoint = appStore.handoffDragScreenLocation ?? NSEvent.mouseLocation
@@ -720,8 +729,7 @@ struct LaunchpadView: View {
                 pendingDropIndex = nil
                 clampSelection()
                 // 重置翻页状态
-                pageFlipManager.isCooldown = false
-                isHandoffDragging = false
+                resetDragPagingState()
                 // 重置拖拽创建文件夹相关状态，确保后续拖拽功能正常
                 appStore.isDragCreatingFolder = false
                 appStore.folderCreationTarget = nil
@@ -791,6 +799,46 @@ struct LaunchpadView: View {
     
     private func navigateToPreviousPage() {
         navigateToPage(appStore.currentPage - 1)
+    }
+
+    // Use the same settle model as normal precise scroll so drag edge-flip looks identical.
+    private func performSmoothPageFlipDuringDrag(to targetPage: Int, pageWidth: CGFloat) -> Bool {
+        guard !isDragEdgeFlipping else { return false }
+        let sourcePage = appStore.currentPage
+        guard targetPage != sourcePage else { return false }
+
+        isDragEdgeFlipping = true
+        let settleToken = UUID()
+        activeScrollSettleToken = settleToken
+
+        isUserSwiping = false
+        isSwipeSettling = true
+        // 一旦确认翻页，立即更新当前页；用过渡偏移保持视觉连续。
+        let transitionalOffset = CGFloat(targetPage - sourcePage) * pageWidth
+        var t = Transaction(animation: nil)
+        t.disablesAnimations = true
+        withTransaction(t) {
+            appStore.currentPage = targetPage
+            interactivePageOffset = transitionalOffset
+        }
+
+        withAnimation(LNAnimations.smooth, completionCriteria: .removed) {
+            interactivePageOffset = 0
+        } completion: {
+            guard activeScrollSettleToken == settleToken else {
+                isSwipeSettling = false
+                isDragEdgeFlipping = false
+                return
+            }
+            guard appStore.currentPage == targetPage else {
+                isSwipeSettling = false
+                isDragEdgeFlipping = false
+                return
+            }
+            isSwipeSettling = false
+            isDragEdgeFlipping = false
+        }
+        return true
     }
     
 }
@@ -1507,17 +1555,19 @@ extension LaunchpadView {
 
     fileprivate func flipPageIfNeeded(at point: CGPoint, in containerSize: CGSize) -> Bool {
         let edgeMargin: CGFloat = config.pageNavigation.edgeFlipMargin
+        let pageWidth = containerSize.width + config.pageSpacing
         
         // 检查翻页冷却状态
         pageFlipManager.autoFlipInterval = config.pageNavigation.autoFlipInterval
         guard pageFlipManager.canFlip() else { return false }
                 
         if point.x <= edgeMargin && appStore.currentPage > 0 {
-            let fromPage = appStore.currentPage
-            navigateToPreviousPage()
-            guard appStore.currentPage != fromPage else { return false }
-            pageFlipManager.recordFlip()
-            return true
+            let targetPage = appStore.currentPage - 1
+            if performSmoothPageFlipDuringDrag(to: targetPage, pageWidth: pageWidth) {
+                pageFlipManager.recordFlip()
+                return true
+            }
+            return false
         } else if point.x >= containerSize.width - edgeMargin {
             let nextPage = appStore.currentPage + 1
             let itemsPerPage = config.itemsPerPage
@@ -1528,11 +1578,13 @@ extension LaunchpadView {
                 _ = appStore.createNewPageForDrag()
             }
 
-            let fromPage = appStore.currentPage
-            navigateToPage(nextPage)
-            guard appStore.currentPage != fromPage else { return false }
-            pageFlipManager.recordFlip()
-            return true
+            let maxPageIndex = max(0, (max(appStore.items.count, 1) - 1) / itemsPerPage)
+            let targetPage = min(nextPage, maxPageIndex)
+            if performSmoothPageFlipDuringDrag(to: targetPage, pageWidth: pageWidth) {
+                pageFlipManager.recordFlip()
+                return true
+            }
+            return false
         }
         
         return false
@@ -1596,6 +1648,7 @@ extension LaunchpadView {
     private func handleDragChange(_ value: DragGesture.Value, item: LaunchpadItem, in containerSize: CGSize, columnWidth: CGFloat, appHeight: CGFloat, iconSize: CGFloat) {
         // 初始化拖拽
         if draggingItem == nil {
+            resetDragPagingState()
             var tx = Transaction(); tx.disablesAnimations = true
             withTransaction(tx) { draggingItem = item }
             dragOriginalIndex = filteredItems.firstIndex(of: item)
@@ -1640,6 +1693,8 @@ extension LaunchpadView {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                     draggingItem = nil
                     pendingDropIndex = nil
+                    dragOriginalIndex = nil
+                    resetDragPagingState()
                     appStore.isDragCreatingFolder = false
                     appStore.folderCreationTarget = nil
                     isSettlingDrop = false
@@ -1686,6 +1741,8 @@ extension LaunchpadView {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                     draggingItem = nil
                     pendingDropIndex = nil
+                    dragOriginalIndex = nil
+                    resetDragPagingState()
                     isSettlingDrop = false
                     dragPreviewOpacity = 1.0
                     clampSelection()
@@ -1713,6 +1770,8 @@ extension LaunchpadView {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                         draggingItem = nil
                         pendingDropIndex = nil
+                        dragOriginalIndex = nil
+                        resetDragPagingState()
                         isSettlingDrop = false
                         dragPreviewOpacity = 1.0
                         clampSelection()
@@ -1722,13 +1781,31 @@ extension LaunchpadView {
             }
             appStore.isDragCreatingFolder = false
             appStore.folderCreationTarget = nil
-            return
         }
         
         // 处理普通拖拽逻辑
-        if let finalIndex = pendingDropIndex,
-           let _ = filteredItems.firstIndex(of: dragging) {
-            let boundedFinalIndex = max(0, min(finalIndex, appStore.items.count))
+        if let _ = filteredItems.firstIndex(of: dragging) {
+            let itemsPerPage = config.itemsPerPage
+            let currentPageStart = appStore.currentPage * itemsPerPage
+            let currentPageEndExclusive = min(currentPageStart + itemsPerPage, appStore.items.count)
+            let currentPageLastIndex = max(currentPageStart, currentPageEndExclusive - 1)
+
+            // Drop must always resolve on CURRENT page.
+            // If pointer is not aligned to a grid cell, snap to current page tail.
+            let resolvedCurrentPageIndex: Int = {
+                if let idx = indexAt(point: dragPreviewPosition,
+                                     in: containerSize,
+                                     pageIndex: appStore.currentPage,
+                                     columnWidth: columnWidth,
+                                     appHeight: appHeight),
+                   idx >= currentPageStart,
+                   idx < currentPageEndExclusive {
+                    return idx
+                }
+                return currentPageLastIndex
+            }()
+            let boundedFinalIndex = max(0, min(resolvedCurrentPageIndex, max(appStore.items.count - 1, 0)))
+            pendingDropIndex = boundedFinalIndex
             // 检查是否为跨页拖拽
             let sourceIndexInItems = appStore.items.firstIndex(of: dragging) ?? 0
             let targetPage = boundedFinalIndex / config.itemsPerPage
@@ -1777,6 +1854,8 @@ extension LaunchpadView {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                 draggingItem = nil
                 pendingDropIndex = nil
+                dragOriginalIndex = nil
+                resetDragPagingState()
                 isSettlingDrop = false
                 dragPreviewOpacity = 1.0
                 clampSelection()
@@ -1790,34 +1869,31 @@ extension LaunchpadView {
             }
             
         } else {
-            // 兜底逻辑：如果没有有效的目标索引，将应用放置到当前页的末尾
-            if let draggingIndex = filteredItems.firstIndex(of: dragging) {
-                let currentPageStart = appStore.currentPage * config.itemsPerPage
-                let currentPageEnd = min(currentPageStart + config.itemsPerPage, appStore.items.count)
-                let targetIndex = currentPageEnd
-                
-                // 设置“落点淡入”的标记
-                lastDroppedItemID = dragging.id
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) {
-                    lastDroppedItemID = nil
-                }
-                
-                // 使用级联插入确保应用能正确放置
-                appStore.moveItemAcrossPagesWithCascade(item: dragging, to: targetIndex)
-                
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                    draggingItem = nil
-                    pendingDropIndex = nil
-                    isSettlingDrop = false
-                    dragPreviewOpacity = 1.0
-                    clampSelection()
-                    appStore.cleanupUnusedNewPage()
-                    appStore.removeEmptyPages()
-                    appStore.pruneEmptyFolders()
-                    appStore.saveAllOrder()
-                }
+            // 若过滤结果瞬时变化导致找不到拖拽项，仍做收尾，避免卡死状态
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                draggingItem = nil
+                pendingDropIndex = nil
+                dragOriginalIndex = nil
+                resetDragPagingState()
+                isSettlingDrop = false
+                dragPreviewOpacity = 1.0
+                clampSelection()
+                appStore.cleanupUnusedNewPage()
+                appStore.removeEmptyPages()
+                appStore.pruneEmptyFolders()
+                appStore.saveAllOrder()
             }
         }
+    }
+
+    private func resetDragPagingState() {
+        pageFlipManager.reset()
+        activeScrollSettleToken = UUID()
+        isHandoffDragging = false
+        isDragEdgeFlipping = false
+        isUserSwiping = false
+        isSwipeSettling = false
+        interactivePageOffset = 0
     }
 
     // 统一的拖拽更新逻辑（普通拖拽与接力拖拽共用）
