@@ -71,6 +71,7 @@ struct LaunchpadView: View {
     
     @State private var isHandoffDragging: Bool = false
     @State private var isUserSwiping: Bool = false
+    @State private var isSwipeSettling: Bool = false
     @State private var accumulatedScrollX: CGFloat = 0
     @State private var wheelAccumulatedSinceFlip: CGFloat = 0
     @State private var wheelLastDirection: Int = 0
@@ -86,7 +87,7 @@ struct LaunchpadView: View {
 
     private var isFolderOpen: Bool { appStore.openFolder != nil }
     private var isPagingInteractionActive: Bool {
-        isUserSwiping || interactivePageOffset != 0 || isPageTransitioning
+        isUserSwiping || isSwipeSettling || interactivePageOffset != 0 || isPageTransitioning
     }
     
     private var config: GridConfig {
@@ -1240,6 +1241,7 @@ extension LaunchpadView {
                 }
             }
             isUserSwiping = true
+            isSwipeSettling = false
             accumulatedScrollX = 0
             interactivePageOffset = 0
         case .changed:
@@ -1287,6 +1289,7 @@ extension LaunchpadView {
 
             accumulatedScrollX = 0
             isUserSwiping = false
+            isSwipeSettling = true
 
             // KEY INSIGHT: never change currentPage during the animation.
             // Animate interactivePageOffset to ±pageWidth so the content slides
@@ -1297,12 +1300,17 @@ extension LaunchpadView {
                 interactivePageOffset = targetOffset
             } completion: {
                 // Guard: bail if a new swipe started or another navigation changed currentPage
-                guard !isUserSwiping, appStore.currentPage == expectedPage else { return }
-                // Set isPageTransitioning = true BEFORE the swap so isPagingInteractionActive
-                // stays true during the render that processes the swap. Without this, there is
-                // a brief frame where isPagingInteractionActive = false, causing adjacent pages
-                // to unmount and immediately remount — producing a visible layout jitter.
-                isPageTransitioning = true
+                guard !isUserSwiping, appStore.currentPage == expectedPage else {
+                    isSwipeSettling = false
+                    return
+                }
+                let didChangePage = (targetPage != expectedPage)
+                // Only mark page transitioning when page index actually changes.
+                // For cancelled flips, keep adjacent pages via isSwipeSettling and
+                // avoid leaving isPageTransitioning stuck at true.
+                if didChangePage {
+                    isPageTransitioning = true
+                }
                 // Atomically commit the new page with no animation.
                 // Visual before: -(expectedPage * W) + targetOffset = -(targetPage * W)
                 // Visual after:  -(targetPage  * W) + 0             = -(targetPage * W)  ✓
@@ -1312,6 +1320,7 @@ extension LaunchpadView {
                     appStore.currentPage = targetPage
                     interactivePageOffset = 0
                 }
+                isSwipeSettling = false
             }
         default:
             break

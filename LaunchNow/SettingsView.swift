@@ -91,7 +91,7 @@ struct SettingsView: View {
                     }
                 }
             }
-            .padding()
+            .padding(.horizontal)
             
             Divider()
             
@@ -127,7 +127,6 @@ struct SettingsView: View {
                         Label(NSLocalizedString("ResetToDefault", comment: "Reset to default"), systemImage: "arrow.uturn.backward")
                     }
                 }
-                .padding(.bottom)
                 
                 // 列表 + 添加按钮
                 VStack(alignment: .leading) {
@@ -178,12 +177,12 @@ struct SettingsView: View {
                                 }
                             }
                         }
-                        .frame(height: 100)
+                        .frame(height: 80)
                         .scrollIndicators(.hidden)
                     }
                 }
             }
-            .padding()
+            .padding(.horizontal)
             
             Divider()
             
@@ -243,11 +242,11 @@ struct SettingsView: View {
                         .padding(.vertical, 3)
                     }
                     .scrollIndicators(.hidden)
-                    .frame(height: 100)
+                    .frame(height: 80)
                 }
 
             }
-            .padding()
+            .padding(.horizontal)
             .sheet(isPresented: $showAddHiddenApps) {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack {
@@ -310,7 +309,7 @@ struct SettingsView: View {
                             .padding(.vertical, 3)
                             .padding(.horizontal)
                         }
-                        .frame(height: 500)
+                        .frame(height: 450)
                         .padding()
                     }
                     
@@ -350,7 +349,7 @@ struct SettingsView: View {
                     Label(NSLocalizedString("Import", comment: "Import Data"), systemImage: "square.and.arrow.down")
                 }
             }
-            .padding()
+            .padding(.horizontal)
             
             Divider()
             
@@ -384,7 +383,6 @@ struct SettingsView: View {
                 }
             }
             .padding(.horizontal)
-            .padding(.top)
 
             HStack {
                 Button {
