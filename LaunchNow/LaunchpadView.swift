@@ -1769,8 +1769,16 @@ extension LaunchpadView {
     
     private func handleAppHover(dragging: LaunchpadItem, targetApp: AppInfo, hoveringIndex: Int, isInCenterArea: Bool) {
         if dragging == .app(targetApp) {
-            clearHoveringState()
-            pendingDropIndex = hoveringIndex
+            // Hovering over ourselves due to reorder shifting the dragged item into this slot.
+            // Look up the ORIGINAL item at this grid position so folder creation still works.
+            if filteredItems.indices.contains(hoveringIndex),
+               case .app(let originalApp) = filteredItems[hoveringIndex],
+               originalApp.id != targetApp.id {
+                handleAppToAppHover(hoveringIndex: hoveringIndex, isInCenterArea: isInCenterArea, targetApp: originalApp)
+            } else {
+                clearHoveringState()
+                pendingDropIndex = hoveringIndex
+            }
         } else if case .app = dragging {
             handleAppToAppHover(hoveringIndex: hoveringIndex, isInCenterArea: isInCenterArea, targetApp: targetApp)
         } else {
