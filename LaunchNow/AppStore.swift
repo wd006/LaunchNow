@@ -1352,7 +1352,7 @@ final class AppStore: ObservableObject {
         }
         
         // 动画事务：更新 items、压缩页面、触发刷新
-        withAnimation(LNAnimations.gridUpdate) {
+        withAnimation(LNAnimations.easeInOut) {
             self.items = newItems
             // 单页内自动补位：将该页内的空槽移到页尾
             self.compactItemsWithinPages()
@@ -1404,7 +1404,7 @@ final class AppStore: ObservableObject {
         }
         
         // 动画事务：更新 items、压缩页面、触发刷新
-        withAnimation(LNAnimations.gridUpdate) {
+        withAnimation(LNAnimations.easeInOut) {
             items = newItems
             // 单页内自动补位，确保页面结构合理
             compactItemsWithinPages()
@@ -1469,7 +1469,7 @@ final class AppStore: ObservableObject {
             // 不进行页面压缩，避免拖拽中槽位跳动
         } else {
             // 非拖拽场景：保持原有回填逻辑（动画包裹）
-            withAnimation(LNAnimations.gridUpdate) {
+            withAnimation(LNAnimations.easeInOut) {
                 if let emptyIndex = items.firstIndex(where: { if case .empty = $0 { return true } else { return false } }) {
                     items[emptyIndex] = .app(app)
                 } else {

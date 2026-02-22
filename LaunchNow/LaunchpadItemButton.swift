@@ -90,7 +90,7 @@ struct LaunchpadItemButton: View {
                                 )
                         } else {
                             RoundedRectangle(cornerRadius: iconSize * 0.2)
-                                .foregroundStyle(Color.clear)
+                                .foregroundStyle(Color.white.opacity(0.15))
                                 .frame(width: iconSize * 0.8, height: iconSize * 0.8)
                                 .glassEffect(in: RoundedRectangle(cornerRadius: iconSize * 0.2))
                                 .shadow(radius: 3)
@@ -110,7 +110,7 @@ struct LaunchpadItemButton: View {
                 }
                 .contentShape(Rectangle()) // 确保整个区域可以接收事件
                 .scaleEffect(isSelected ? 1.2 : effectiveScale)
-                .animation(LNAnimations.gridUpdate, value: isHovered || isSelected) // 为文件夹添加轻微延迟，防止过早移动
+                .animation(LNAnimations.easeInOut, value: isHovered || isSelected) // 为文件夹添加轻微延迟，防止过早移动
 
                 if appStore.showAppNameBelowIcon {
                     Text(item.name)

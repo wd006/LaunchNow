@@ -1,8 +1,7 @@
 import SwiftUI
 
 enum LNAnimations {
-    static let springFast: Animation = .smooth
-    static let gridUpdate: Animation = .easeInOut(duration: 0.3) // 网格更新动画
-    static let itemAppear: Animation = .easeInOut(duration: 0.3)
+    static let smooth: Animation = .smooth
+    static let easeInOut: Animation = .easeInOut(duration: 0.3)
 }
 

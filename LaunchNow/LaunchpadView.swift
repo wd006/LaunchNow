@@ -276,8 +276,8 @@ struct LaunchpadView: View {
                                                     )
                                                 }
                                             }
-                                            .animation(LNAnimations.gridUpdate, value: pendingDropIndex)
-                                            .animation(LNAnimations.gridUpdate, value: appStore.gridRefreshTrigger)
+                                            .animation(LNAnimations.easeInOut, value: pendingDropIndex)
+                                            .animation(LNAnimations.easeInOut, value: appStore.gridRefreshTrigger)
                                             .id("grid_\(index)_\(appStore.gridRefreshTrigger.uuidString)")
                                             .frame(maxHeight: .infinity, alignment: .top)
                                         } else {
@@ -416,7 +416,7 @@ struct LaunchpadView: View {
                         // 如果正在编辑文件夹名称，不关闭文件夹
                         if !appStore.isFolderNameEditing {
                             let closingFolder = appStore.openFolder
-                            withAnimation(LNAnimations.gridUpdate) {
+                            withAnimation(LNAnimations.easeInOut) {
                                 appStore.openFolder = nil
                             }
                             // 关闭后将键盘导航选中项切换到该文件夹
@@ -462,7 +462,7 @@ struct LaunchpadView: View {
                             preferredIconSize: currentIconSize,
                             onClose: {
                                 let closingFolder = appStore.openFolder
-                                withAnimation(LNAnimations.itemAppear) {
+                                withAnimation(LNAnimations.easeInOut) {
                                     appStore.openFolder = nil
                                 }
                                 // 关闭后将键盘导航选中项切换到该文件夹
@@ -571,7 +571,7 @@ struct LaunchpadView: View {
         case .app(let app):
             launchApp(app)
         case .folder(let folder):
-            withAnimation(LNAnimations.gridUpdate) {
+            withAnimation(LNAnimations.easeInOut) {
                 appStore.openFolder = folder
             }
         case .empty:
@@ -700,7 +700,7 @@ struct LaunchpadView: View {
             }
         }
 
-        withAnimation(LNAnimations.gridUpdate) {
+        withAnimation(LNAnimations.easeInOut) {
             dragPreviewOpacity = 0.0
         }
         // 使用统一的拖拽结束处理逻辑
@@ -713,7 +713,7 @@ struct LaunchpadView: View {
     private func navigateToPage(_ targetPage: Int, animated: Bool = true) {
         guard targetPage >= 0 && targetPage < pages.count else { return }
         if animated {
-            withAnimation(LNAnimations.springFast) {
+            withAnimation(LNAnimations.smooth) {
                 appStore.currentPage = targetPage
             }
         } else {
@@ -780,7 +780,7 @@ extension LaunchpadView {
         if isFolderOpen {
             if event.keyCode == 53 { // esc
                 let closingFolder = appStore.openFolder
-                withAnimation(LNAnimations.gridUpdate) {
+                withAnimation(LNAnimations.easeInOut) {
                     appStore.openFolder = nil
                 }
                 if let folder = closingFolder,
@@ -1035,11 +1035,11 @@ extension LaunchpadView {
                 withMatchedGeometry(base, id: item.id)
                     // Fade in newly dropped item
                     .opacity((lastDroppedItemID == item.id) ? 0 : 1)
-                    .animation(LNAnimations.itemAppear, value: lastDroppedItemID)
+                    .animation(LNAnimations.easeInOut, value: lastDroppedItemID)
                     // Hide tile while it is being dragged
                     .opacity((isDraggingThisTile && !isSettlingDrop) ? 0 : 1)
-                    .animation(LNAnimations.itemAppear, value: isSettlingDrop)
-                    .animation(LNAnimations.itemAppear, value: pendingDropIndex)
+                    .animation(LNAnimations.easeInOut, value: isSettlingDrop)
+                    .animation(LNAnimations.easeInOut, value: pendingDropIndex)
                     .allowsHitTesting(!isDraggingThisTile)
                     .simultaneousGesture(
                         DragGesture(minimumDistance: 2, coordinateSpace: .named("grid"))
@@ -1057,7 +1057,7 @@ extension LaunchpadView {
                 withMatchedGeometry(base, id: item.id)
                     // Fade in newly dropped item
                     .opacity((lastDroppedItemID == item.id) ? 0 : 1)
-                    .animation(LNAnimations.itemAppear, value: lastDroppedItemID)
+                    .animation(LNAnimations.easeInOut, value: lastDroppedItemID)
             }
         }
     }
@@ -1293,7 +1293,7 @@ extension LaunchpadView {
             // continuously like a scroll view — no discontinuity at any frame.
             // currentPage is only updated in the completion block, atomically with
             // resetting io to 0, so the visual position is identical before and after.
-            withAnimation(.spring(duration: 0.35, bounce: 0), completionCriteria: .removed) {
+            withAnimation(LNAnimations.smooth, completionCriteria: .removed) {
                 interactivePageOffset = targetOffset
             } completion: {
                 // Guard: bail if a new swipe started or another navigation changed currentPage
@@ -1552,7 +1552,7 @@ extension LaunchpadView {
                                                   pageIndex: pageOf(index: original),
                                                   columnWidth: columnWidth,
                                                   appHeight: appHeight)
-                    withAnimation(LNAnimations.gridUpdate) {
+                    withAnimation(LNAnimations.easeInOut) {
                         dragPreviewPosition = targetCenter
                         dragPreviewScale = 1.0
                         dragPreviewOpacity = 0.0
@@ -1582,7 +1582,7 @@ extension LaunchpadView {
                                                       pageIndex: appStore.currentPage,
                                                       columnWidth: columnWidth,
                                                       appHeight: appHeight)
-                        withAnimation(LNAnimations.gridUpdate) {
+                        withAnimation(LNAnimations.easeInOut) {
                             dragPreviewPosition = targetCenter
                             dragPreviewScale = 1.0
                             dragPreviewOpacity = 0.0
@@ -1596,7 +1596,7 @@ extension LaunchpadView {
                                                       pageIndex: appStore.currentPage,
                                                       columnWidth: columnWidth,
                                                       appHeight: appHeight)
-                        withAnimation(LNAnimations.gridUpdate) {
+                        withAnimation(LNAnimations.easeInOut) {
                             dragPreviewPosition = targetCenter
                             dragPreviewScale = 1.0
                             dragPreviewOpacity = 0.0
@@ -1626,7 +1626,7 @@ extension LaunchpadView {
                                                   pageIndex: appStore.currentPage,
                                                   columnWidth: columnWidth,
                                                   appHeight: appHeight)
-                    withAnimation(LNAnimations.gridUpdate) {
+                    withAnimation(LNAnimations.easeInOut) {
                         dragPreviewPosition = targetCenter
                         dragPreviewScale = 1.0
                         dragPreviewOpacity = 0.0
@@ -1662,7 +1662,7 @@ extension LaunchpadView {
                                           pageIndex: finalPage,
                                           columnWidth: columnWidth,
                                           appHeight: appHeight)
-            withAnimation(LNAnimations.gridUpdate) {
+            withAnimation(LNAnimations.easeInOut) {
                 dragPreviewPosition = targetCenter
                 dragPreviewScale = 1.0
                 dragPreviewOpacity = 0.0
@@ -1685,7 +1685,7 @@ extension LaunchpadView {
                 let moving = pageSlice.remove(at: localFrom)
                 pageSlice.insert(moving, at: localTo)
                 newItems.replaceSubrange(pageStart..<pageEnd, with: pageSlice)
-                withAnimation(LNAnimations.gridUpdate) {
+                withAnimation(LNAnimations.easeInOut) {
                     appStore.items = newItems
                 }
                 appStore.saveAllOrder()
@@ -1994,7 +1994,7 @@ struct DragPreviewItem: View {
                     .padding(.vertical, 4)
             }
             .scaleEffect(scale)
-            .animation(LNAnimations.gridUpdate, value: scale)
+            .animation(LNAnimations.easeInOut, value: scale)
 
         case .folder(let folder):
             VStack(spacing: 6) {
@@ -2025,7 +2025,7 @@ struct DragPreviewItem: View {
                     .padding(.vertical, 4)
             }
             .scaleEffect(scale)
-            .animation(LNAnimations.gridUpdate, value: scale)
+            .animation(LNAnimations.easeInOut, value: scale)
             
         case .empty:
             EmptyView()

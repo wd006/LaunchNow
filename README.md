@@ -51,3 +51,5 @@ Japanese translation by @endianoia
 Korean translation by @D-KoLee
 
 Italian, Turkish translation by @wd006
+
+Code improvement and optimization by @dizzycoder1112

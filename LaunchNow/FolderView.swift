@@ -30,7 +30,7 @@ struct FolderView: View {
     @State private var isScrolling: Bool = false
     @State private var lastScrollMark: Date = .distantPast
     private let outOfBoundsDwell: TimeInterval = 0.0
-    private let unifiedAnim = LNAnimations.gridUpdate
+    private let unifiedAnim = LNAnimations.easeInOut
     
     let onClose: () -> Void
     let onLaunchApp: (AppInfo) -> Void
@@ -101,7 +101,7 @@ struct FolderView: View {
             var tx = Transaction(); tx.disablesAnimations = true
             withTransaction(tx) { deferGridUntilOpened = true }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
-                withAnimation(LNAnimations.itemAppear) {
+                withAnimation(LNAnimations.easeInOut) {
                     deferGridUntilOpened = false
                 }
             }
@@ -220,8 +220,8 @@ struct FolderView: View {
                         )
                     }
                 }
-                .animation(LNAnimations.gridUpdate, value: pendingDropIndex)
-                .animation(LNAnimations.gridUpdate, value: folder.apps)
+                .animation(LNAnimations.easeInOut, value: pendingDropIndex)
+                .animation(LNAnimations.easeInOut, value: folder.apps)
                 .padding(EdgeInsets(top: gridPadding, leading: gridPadding, bottom: gridPadding, trailing: gridPadding))
                 .background(
                     GeometryReader { proxy in
@@ -359,12 +359,12 @@ extension FolderView {
 
         base
             .opacity((isDraggingThisTile && !isSettlingDrop) ? 0 : ((lastDroppedAppID == app.id) ? 0 : 1))
-            .animation(LNAnimations.itemAppear, value: lastDroppedAppID)
-            .animation(LNAnimations.itemAppear, value: isSettlingDrop)
-            .animation(isSettlingDrop ? nil : LNAnimations.itemAppear, value: pendingDropIndex)
+            .animation(LNAnimations.easeInOut, value: lastDroppedAppID)
+            .animation(LNAnimations.easeInOut, value: isSettlingDrop)
+            .animation(isSettlingDrop ? nil : LNAnimations.easeInOut, value: pendingDropIndex)
             .allowsHitTesting(!isDraggingThisTile)
             .contentTransition(.opacity)
-            .animation(LNAnimations.springFast, value: isSelected)
+            .animation(LNAnimations.smooth, value: isSelected)
             .simultaneousGesture(
                 DragGesture(minimumDistance: 2, coordinateSpace: .named("folderGrid"))
                     .onChanged { value in
@@ -479,7 +479,7 @@ extension FolderView {
                                 
                                 // 触发落点图标的柔和淡入效果（与外部一致）
                                 lastDroppedAppID = dragging.id
-                                // 短暂延迟后将其清空，使不透明度从 0 -> 1 并按 itemAppear 动画过渡
+                                // 短暂延迟后将其清空，使不透明度从 0 -> 1
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) {
                                     lastDroppedAppID = nil
                                 }
