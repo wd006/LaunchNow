@@ -81,22 +81,22 @@ struct LaunchpadItemButton: View {
                         // Skip glassEffect during page swipe to avoid expensive per-frame background resampling
                         if isAnimating {
                             RoundedRectangle(cornerRadius: iconSize * 0.2)
-                                .fill(Color.white.opacity(0.15))
+                                .foregroundStyle(Color.clear)
                                 .frame(width: iconSize * 0.8, height: iconSize * 0.8)
-                                .shadow(radius: 3)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: iconSize * 0.2)
                                         .stroke(Color.foundary.opacity(0.5), lineWidth: 2)
+                                        .shadow(radius: 5)
                                 )
                         } else {
                             RoundedRectangle(cornerRadius: iconSize * 0.2)
-                                .foregroundStyle(Color.white.opacity(0.15))
+                                .foregroundStyle(Color.clear)
                                 .frame(width: iconSize * 0.8, height: iconSize * 0.8)
-                                .glassEffect(in: RoundedRectangle(cornerRadius: iconSize * 0.2))
-                                .shadow(radius: 3)
+                                .glassEffect(.clear, in: RoundedRectangle(cornerRadius: iconSize * 0.2))
                                 .overlay(
                                     RoundedRectangle(cornerRadius: iconSize * 0.2)
                                         .stroke(Color.foundary.opacity(0.5), lineWidth: 2)
+                                        .shadow(radius: 5)
                                 )
                         }
                     }
@@ -164,8 +164,24 @@ struct LaunchpadItemButton: View {
 // This allows SwiftUI to skip body re-evaluation when only scroll offset changes,
 // while still re-rendering when any visible property actually changes.
 extension LaunchpadItemButton: Equatable {
+    private static func isVisuallySameItem(_ lhs: LaunchpadItem, _ rhs: LaunchpadItem) -> Bool {
+        switch (lhs, rhs) {
+        case let (.app(lApp), .app(rApp)):
+            return lApp.id == rApp.id
+        case let (.folder(lFolder), .folder(rFolder)):
+            // Folder icon and title depend on folder name + contained apps.
+            return lFolder.id == rFolder.id &&
+                lFolder.name == rFolder.name &&
+                lFolder.apps.map(\.id) == rFolder.apps.map(\.id)
+        case let (.empty(lToken), .empty(rToken)):
+            return lToken == rToken
+        default:
+            return false
+        }
+    }
+
     static func == (lhs: LaunchpadItemButton, rhs: LaunchpadItemButton) -> Bool {
-        lhs.item == rhs.item &&
+        isVisuallySameItem(lhs.item, rhs.item) &&
         lhs.iconSize == rhs.iconSize &&
         lhs.labelWidth == rhs.labelWidth &&
         lhs.isSelected == rhs.isSelected &&

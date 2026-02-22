@@ -77,6 +77,8 @@ struct LaunchpadView: View {
     @State private var wheelLastDirection: Int = 0
     @State private var wheelLastFlipAt: Date? = nil
     private let wheelFlipCooldown: TimeInterval = 0.15
+    // Guards async settle completion to prevent stale page commits during rapid swipes.
+    @State private var activeScrollSettleToken: UUID = UUID()
     
     // 跟手翻页：交互偏移（仅在精确滚动手势进行中使用）
     @State private var interactivePageOffset: CGFloat = 0
@@ -279,7 +281,6 @@ struct LaunchpadView: View {
                                             }
                                             .animation(LNAnimations.easeInOut, value: pendingDropIndex)
                                             .animation(LNAnimations.easeInOut, value: appStore.gridRefreshTrigger)
-                                            .id("grid_\(index)_\(appStore.gridRefreshTrigger.uuidString)")
                                             .frame(maxHeight: .infinity, alignment: .top)
                                         } else {
                                             Color.clear
@@ -318,6 +319,10 @@ struct LaunchpadView: View {
                             )
                         }
                         .onChange(of: appStore.filteredItems) { rebuildPages() }
+                        .onChange(of: appStore.gridRefreshTrigger) {
+                            // Soft refresh only: update cached page slices without rebuilding grid identity.
+                            rebuildPages()
+                        }
                         .onChange(of: appStore.handoffDraggingApp) {
                             if appStore.openFolder == nil, appStore.handoffDraggingApp != nil {
                                 startHandoffDragIfNeeded(geo: geo, columnWidth: columnWidth, appHeight: appHeight, iconSize: iconSize)
@@ -1231,6 +1236,8 @@ extension LaunchpadView {
         let delta = abs(deltaX) >= abs(deltaY) ? deltaX : -deltaY // vertical swipes map to horizontal
         switch phase {
         case .began:
+            // Invalidate any previous settle completion.
+            activeScrollSettleToken = UUID()
             // If a previous swipe's settle-animation is still in flight, snap currentPage to the
             // nearest page before resetting io=0, so the visual doesn't jump to the wrong page.
             if interactivePageOffset != 0 {
@@ -1286,6 +1293,8 @@ extension LaunchpadView {
 
             // Capture current page so the completion block can guard against interruption
             let expectedPage = appStore.currentPage
+            let settleToken = UUID()
+            activeScrollSettleToken = settleToken
 
             accumulatedScrollX = 0
             isUserSwiping = false
@@ -1299,6 +1308,10 @@ extension LaunchpadView {
             withAnimation(LNAnimations.smooth, completionCriteria: .removed) {
                 interactivePageOffset = targetOffset
             } completion: {
+                guard activeScrollSettleToken == settleToken else {
+                    isSwipeSettling = false
+                    return
+                }
                 // Guard: bail if a new swipe started or another navigation changed currentPage
                 guard !isUserSwiping, appStore.currentPage == expectedPage else {
                     isSwipeSettling = false
@@ -2011,11 +2024,11 @@ struct DragPreviewItem: View {
                     RoundedRectangle(cornerRadius: iconSize * 0.2)
                         .foregroundStyle(Color.clear)
                         .frame(width: iconSize * 0.8, height: iconSize * 0.8)
-                        .glassEffect(in: RoundedRectangle(cornerRadius: iconSize * 0.2))
-                        .shadow(radius: 2)
+                        .glassEffect(.clear, in: RoundedRectangle(cornerRadius: iconSize * 0.2))
                         .overlay(
                             RoundedRectangle(cornerRadius: iconSize * 0.2)
-                                .stroke(Color.foundary.opacity(0.5), lineWidth: 1)
+                                .stroke(Color.foundary.opacity(0.5), lineWidth: 2)
+                                .shadow(radius: 5)
                         )
                     Image(nsImage: folder.icon(of: iconSize))
                         .resizable()
