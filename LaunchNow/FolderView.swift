@@ -8,7 +8,6 @@ struct FolderView: View {
     var preferredIconSize: CGFloat? = nil
     @State private var folderName: String = ""
     @State private var isEditingName = false
-    @State private var forceRefreshTrigger: UUID = UUID()
     @FocusState private var isTextFieldFocused: Bool
     @Namespace private var reorderNamespaceFolder
     // 键盘导航
@@ -162,12 +161,6 @@ struct FolderView: View {
                         .onTapGesture {
                             finishEditing()
                         }
-                        .simultaneousGesture(
-                            TapGesture()
-                                .onEnded { _ in
-                                    // 点击编辑框时阻止事件冒泡到父视图
-                                }
-                        )
                 } else {
                     Text(folder.name)
                         .font(.title)
@@ -662,4 +655,3 @@ private extension View {
         if condition { transform(self) } else { self }
     }
 }
-

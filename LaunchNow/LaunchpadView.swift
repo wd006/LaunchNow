@@ -11,7 +11,7 @@ extension LaunchpadItem {
 }
 
 // MARK: - 简化的翻页管理器
-private class PageFlipManager: ObservableObject {
+private final class PageFlipManager: ObservableObject {
     @Published var isCooldown: Bool = false
     private var lastFlipTime: Date?
     var autoFlipInterval: TimeInterval = 0.8
@@ -1083,7 +1083,7 @@ extension LaunchpadView {
 
     @ViewBuilder
     private func withMatchedGeometry(_ content: some View, id: String) -> some View {
-        if draggingItem != nil {
+        if draggingItem == nil {
             content.matchedGeometryEffect(id: id, in: reorderNamespace)
         } else {
             content
@@ -1170,6 +1170,7 @@ extension LaunchpadView {
         }
     }
 }
+
 
 // MARK: - Drag math helpers
 extension LaunchpadView {
@@ -1483,6 +1484,7 @@ struct ScrollEventCatcher: NSViewRepresentable {
 }
 
 // MARK: - Drag preview view
+
 
 
 // MARK: - Selection Helpers
