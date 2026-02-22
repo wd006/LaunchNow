@@ -1134,6 +1134,19 @@ extension LaunchpadView {
             .frame(height: appHeight)
             // 保持稳定的视图身份，避免在文件夹更新后中断拖拽手势
             .id(item.id)
+            .contextMenu {
+                if case .app(let app) = item, !appStore.folders.isEmpty {
+                    Menu(NSLocalizedString("MoveToFolder", comment: "Move to folder")) {
+                        ForEach(appStore.folders) { folder in
+                            Button(action: {
+                                appStore.addAppToFolder(app, folder: folder)
+                            }) {
+                                Label(folder.name, systemImage: "folder")
+                            }
+                        }
+                    }
+                }
+            }
 
             // Use @ViewBuilder conditional instead of AnyView to allow SwiftUI structural diffing
             if appStore.searchText.isEmpty && !isFolderOpen {
