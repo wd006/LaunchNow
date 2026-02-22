@@ -1387,53 +1387,31 @@ extension LaunchpadView {
                 targetPage = appStore.currentPage
             }
 
-            // The offset that, relative to currentPage, puts targetPage at the center.
-            // e.g. currentPage=0, targetPage=1, pageWidth=1000 → targetOffset=-1000
-            // So hStackOffset = -(0*1000) + (-1000) = -1000 = -(1*1000) ✓
-            let targetOffset = -CGFloat(targetPage - appStore.currentPage) * pageWidth
+            // We commit the page change immediately when the flip decision is made.
+            // Preserve visual continuity: after committing the page, set IO so that
+            // hStackOffset remains the same at the commit frame.
+            // Before: h = -(oldPage * W) + IO
+            // After:  h = -(newPage * W) + IO' = h  ⇒  IO' = IO + (newPage - oldPage) * W
+            let oldPage = appStore.currentPage
+            let previousIO = interactivePageOffset
+            let transitionalOffset = previousIO + CGFloat(targetPage - oldPage) * pageWidth
 
-            // Capture current page so the completion block can guard against interruption
-            let expectedPage = appStore.currentPage
-            let settleToken = UUID()
-            activeScrollSettleToken = settleToken
-
+            // Reset swipe state and commit page instantly (no animation),
+            // then animate the offset back to 0 to complete the visual transition.
             accumulatedScrollX = 0
             isUserSwiping = false
             isSwipeSettling = true
 
-            // KEY INSIGHT: never change currentPage during the animation.
-            // Animate interactivePageOffset to ±pageWidth so the content slides
-            // continuously like a scroll view — no discontinuity at any frame.
-            // currentPage is only updated in the completion block, atomically with
-            // resetting io to 0, so the visual position is identical before and after.
+            var t = Transaction(animation: nil)
+            t.disablesAnimations = true
+            withTransaction(t) {
+                appStore.currentPage = targetPage
+                interactivePageOffset = transitionalOffset
+            }
+
             withAnimation(LNAnimations.smooth, completionCriteria: .removed) {
-                interactivePageOffset = targetOffset
+                interactivePageOffset = 0
             } completion: {
-                guard activeScrollSettleToken == settleToken else {
-                    isSwipeSettling = false
-                    return
-                }
-                // Guard: bail if a new swipe started or another navigation changed currentPage
-                guard !isUserSwiping, appStore.currentPage == expectedPage else {
-                    isSwipeSettling = false
-                    return
-                }
-                let didChangePage = (targetPage != expectedPage)
-                // Only mark page transitioning when page index actually changes.
-                // For cancelled flips, keep adjacent pages via isSwipeSettling and
-                // avoid leaving isPageTransitioning stuck at true.
-                if didChangePage {
-                    isPageTransitioning = true
-                }
-                // Atomically commit the new page with no animation.
-                // Visual before: -(expectedPage * W) + targetOffset = -(targetPage * W)
-                // Visual after:  -(targetPage  * W) + 0             = -(targetPage * W)  ✓
-                var t = Transaction(animation: nil)
-                t.disablesAnimations = true
-                withTransaction(t) {
-                    appStore.currentPage = targetPage
-                    interactivePageOffset = 0
-                }
                 isSwipeSettling = false
             }
         default:
@@ -2200,3 +2178,4 @@ func arrowDelta(for keyCode: UInt16) -> (dx: Int, dy: Int)? {
     default: return nil
     }
 }
+
