@@ -1417,7 +1417,7 @@ final class AppStore: ObservableObject {
         
         // 刷新缓存，确保搜索时能找到新添加的应用
         refreshCacheAfterFolderOperation()
-        
+        removeEmptyPages()
         saveAllOrder()
     }
     
