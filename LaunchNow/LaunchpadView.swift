@@ -93,6 +93,9 @@ struct LaunchpadView: View {
 
     // Performance: cache pages array to avoid recomputing on every interactivePageOffset change
     @State private var cachedPages: [[LaunchpadItem]] = []
+    @State private var isFolderContentReady: Bool = false
+    @State private var folderContentToken: UUID = UUID()
+    private let folderAnimation: Animation = .easeInOut(duration: 0.12)
 
     private var isFolderOpen: Bool { appStore.openFolder != nil }
     private var isPagingInteractionActive: Bool {
@@ -340,6 +343,11 @@ struct LaunchpadView: View {
                             }
                         }
                         .onChange(of: appStore.openFolder) {
+                            if appStore.openFolder != nil {
+                                scheduleFolderContentReveal()
+                            } else {
+                                isFolderContentReady = false
+                            }
                             if appStore.openFolder == nil, appStore.handoffDraggingApp != nil {
                                 startHandoffDragIfNeeded(geo: geo, columnWidth: columnWidth, appHeight: appHeight, iconSize: iconSize)
                             }
@@ -435,7 +443,7 @@ struct LaunchpadView: View {
                         // 如果正在编辑文件夹名称，不关闭文件夹
                         if !appStore.isFolderNameEditing {
                             let closingFolder = appStore.openFolder
-                            withAnimation(LNAnimations.easeInOut) {
+                            withAnimation(folderAnimation) {
                                 appStore.openFolder = nil
                             }
                             // 关闭后将键盘导航选中项切换到该文件夹
@@ -459,48 +467,55 @@ struct LaunchpadView: View {
                         let targetHeight = proxy.size.height * 0.7
                         let folderId = openFolder.id
                         
-                        // 使用计算属性来确保绑定能够正确响应folderUpdateTrigger的变化
-                        let folderBinding = Binding<FolderInfo>(
-                            get: {
-                                // 每次访问都重新查找文件夹，确保获取最新状态
-                                if let idx = appStore.folders.firstIndex(where: { $0.id == folderId }) {
-                                    return appStore.folders[idx]
-                                }
-                                return openFolder
-                            },
-                            set: { newValue in
-                                if let idx = appStore.folders.firstIndex(where: { $0.id == folderId }) {
-                                    appStore.folders[idx] = newValue
-                                }
-                            }
-                        )
-                        
-                        FolderView(
-                            appStore: appStore,
-                            folder: folderBinding,
-                            preferredIconSize: currentIconSize,
-                            onClose: {
-                                let closingFolder = appStore.openFolder
-                                withAnimation(LNAnimations.easeInOut) {
-                                    appStore.openFolder = nil
-                                }
-                                // 关闭后将键盘导航选中项切换到该文件夹
-                                if let folder = closingFolder,
-                                   let idx = filteredItems.firstIndex(of: .folder(folder)) {
-                                    isKeyboardNavigationActive = true
-                                    selectedIndex = idx
-                                    let targetPage = idx / config.itemsPerPage
-                                    if targetPage != appStore.currentPage {
-                                        appStore.currentPage = targetPage
+                        ZStack {
+                            if isFolderContentReady {
+                                // 使用计算属性来确保绑定能够正确响应folderUpdateTrigger的变化
+                                let folderBinding = Binding<FolderInfo>(
+                                    get: {
+                                        // 每次访问都重新查找文件夹，确保获取最新状态
+                                        if let idx = appStore.folders.firstIndex(where: { $0.id == folderId }) {
+                                            return appStore.folders[idx]
+                                        }
+                                        return openFolder
+                                    },
+                                    set: { newValue in
+                                        if let idx = appStore.folders.firstIndex(where: { $0.id == folderId }) {
+                                            appStore.folders[idx] = newValue
+                                        }
                                     }
-                                }
-                                // 关闭文件夹后恢复搜索框焦点
-                                isSearchFieldFocused = true
-                            },
-                            onLaunchApp: { app in
-                                launchApp(app)
+                                )
+                                
+                                FolderView(
+                                    appStore: appStore,
+                                    folder: folderBinding,
+                                    preferredIconSize: currentIconSize,
+                                    onClose: {
+                                        let closingFolder = appStore.openFolder
+                                        withAnimation(folderAnimation) {
+                                            appStore.openFolder = nil
+                                        }
+                                        // 关闭后将键盘导航选中项切换到该文件夹
+                                        if let folder = closingFolder,
+                                           let idx = filteredItems.firstIndex(of: .folder(folder)) {
+                                            isKeyboardNavigationActive = true
+                                            selectedIndex = idx
+                                            let targetPage = idx / config.itemsPerPage
+                                            if targetPage != appStore.currentPage {
+                                                appStore.currentPage = targetPage
+                                            }
+                                        }
+                                        // 关闭文件夹后恢复搜索框焦点
+                                        isSearchFieldFocused = true
+                                    },
+                                    onLaunchApp: { app in
+                                        launchApp(app)
+                                    }
+                                )
+                                .transition(.opacity)
+                            } else {
+                                FolderShellView(name: openFolder.name)
                             }
-                        )
+                        }
                         .environmentObject(appStore)
                         .frame(width: targetWidth, height: targetHeight)
                         .position(x: proxy.size.width / 2, y: proxy.size.height / 2)
@@ -597,11 +612,25 @@ struct LaunchpadView: View {
         case .app(let app):
             launchApp(app)
         case .folder(let folder):
-            withAnimation(LNAnimations.easeInOut) {
+            AppCacheManager.shared.preloadIcons(for: folder.apps.map { $0.url.path })
+            withAnimation(folderAnimation) {
                 appStore.openFolder = folder
             }
         case .empty:
             break
+        }
+    }
+
+    private func scheduleFolderContentReveal() {
+        let token = UUID()
+        folderContentToken = token
+        isFolderContentReady = false
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            if folderContentToken == token {
+                withAnimation(folderAnimation) {
+                    isFolderContentReady = true
+                }
+            }
         }
     }
     
@@ -888,7 +917,7 @@ extension LaunchpadView {
         if isFolderOpen {
             if event.keyCode == 53 { // esc
                 let closingFolder = appStore.openFolder
-                withAnimation(LNAnimations.easeInOut) {
+                withAnimation(folderAnimation) {
                     appStore.openFolder = nil
                 }
                 if let folder = closingFolder,
@@ -2199,4 +2228,3 @@ func arrowDelta(for keyCode: UInt16) -> (dx: Int, dy: Int)? {
     default: return nil
     }
 }
-

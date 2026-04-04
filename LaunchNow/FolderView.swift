@@ -77,7 +77,6 @@ struct FolderView: View {
                 Color.clear.glassEffect(.regular, in: RoundedRectangle(cornerRadius: 30))
             }
         )
-        .transition(.opacity)
         .onTapGesture {
             // 当点击文件夹视图的非编辑区域时，如果正在编辑名称，则退出编辑模式
             if isEditingName {
