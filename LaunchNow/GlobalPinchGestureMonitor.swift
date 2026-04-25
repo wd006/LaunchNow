@@ -53,6 +53,7 @@ private struct FrameTouch {
 private struct PinchSession {
     var fingerIDs = Set<Int32>()
     var initialRadius: CGFloat?
+    var filteredRadius: CGFloat?
 }
 
 enum GlobalPinchGestureDirection {
@@ -73,9 +74,11 @@ final class GlobalPinchGestureMonitor {
     private var session = PinchSession()
 
     private let minimumTouchCount = 4
-    private let pinchInRatioThreshold: CGFloat = 0.82
-    private let pinchOutRatioThreshold: CGFloat = 1.18
+    private let pinchInRatioThreshold: CGFloat = 0.9
+    private let pinchOutRatioThreshold: CGFloat = 1.1
     private let triggerCooldown: TimeInterval = 0.2
+    private let radiusFilterFactor: CGFloat = 0.28
+    private let progressDeadZone: CGFloat = 0.015
 
     private init() {}
 
@@ -175,17 +178,24 @@ final class GlobalPinchGestureMonitor {
 
         if session.initialRadius == nil {
             session.initialRadius = radius
+            session.filteredRadius = radius
             return
         }
 
         guard
             let initialRadius = session.initialRadius,
+            let previousFilteredRadius = session.filteredRadius,
             initialRadius > 0
         else {
             return
         }
 
-        let radiusRatio = radius / initialRadius
+        let filteredRadius = previousFilteredRadius + (radius - previousFilteredRadius) * radiusFilterFactor
+        session.filteredRadius = filteredRadius
+        let radiusRatio = filteredRadius / initialRadius
+        if abs(radiusRatio - 1) < progressDeadZone {
+            return
+        }
         if radiusRatio < 1 {
             let pinchInProgress = max(0, min(1, (1 - radiusRatio) / (1 - pinchInRatioThreshold)))
             onProgress?(.pinchIn, pinchInProgress)
@@ -220,6 +230,7 @@ final class GlobalPinchGestureMonitor {
 
     private func resetTrackingBaseline(to radius: CGFloat) {
         session.initialRadius = radius
+        session.filteredRadius = radius
     }
 
     private func requestAccessibilityTrustIfNeeded() {

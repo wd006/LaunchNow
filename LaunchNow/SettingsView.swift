@@ -90,8 +90,9 @@ struct SettingsView: View {
                     Text(NSLocalizedString("DisplayedLanguage", comment: "Displayed Language"))
                     Spacer()
                     Button {
-                        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.Localization")!)
-                        AppDelegate.shared?.hideWindow()
+                        AppDelegate.shared?.requestHideWindow {
+                            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.Localization")!)
+                        }
                     } label: {
                         Text(NSLocalizedString("Language", comment: "Language..."))
                     }
@@ -366,8 +367,9 @@ struct SettingsView: View {
                 .alert(updater.alertTitle, isPresented: $updater.showAlert) {
                     if let url = updater.alertURL {
                         Button(NSLocalizedString("Confirm", comment: "Confirm")) {
-                            NSWorkspace.shared.open(url)
-                            AppDelegate.shared?.hideWindow()
+                            AppDelegate.shared?.requestHideWindow {
+                                NSWorkspace.shared.open(url)
+                            }
                         }
                         Button(NSLocalizedString("Cancel", comment: "Cancel"), role: .cancel) {}
                     } else {

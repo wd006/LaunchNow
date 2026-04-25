@@ -35,6 +35,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         case hide
     }
 
+    private enum WindowTransitionDirection {
+        case show
+        case hide
+    }
+
     private var window: NSWindow?
     private let minimumContentSize = NSSize(width: 800, height: 600)
     private var lastShowAt: Date?
@@ -46,10 +51,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var gesturePreviewProgress: CGFloat = 0
     private var gestureContinuityProgress: CGFloat?
     private var gesturePreviewActivated = false
+    private var isAnimatingWindowTransition = false
     private let showStartScale: CGFloat = 1.28
-    private let hideEndScale: CGFloat = 1.28
     private let previewActivationProgress: CGFloat = 0.08
     private let gestureCompletionProgressThreshold: CGFloat = 0.52
+    private let previewSmoothingFactor: CGFloat = 0.42
     
     let appStore = AppStore()
     var modelContainer: ModelContainer?
@@ -61,8 +67,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         bindGestureSettings()
         appStore.performInitialScanIfNeeded()
         appStore.startAutoRescan()
-        
-        if appStore.isFullscreenMode { updateWindowMode(isFullscreen: true) }
+        requestShowWindow()
     }
 
     private func bindGestureSettings() {
@@ -133,14 +138,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
         
         applyCornerRadius()
-        window?.orderFrontRegardless()
-        window?.makeKey()
-        lastShowAt = Date()
-        NotificationCenter.default.post(name: .launchpadWindowShown, object: nil)
-        
+        applyPreviewVisual(scale: 1, alpha: 1)
+        window?.alphaValue = 1
     }
     
-    func showWindow() {
+    private func finalizeShownState() {
         guard let window = window else { return }
         let screen = getCurrentActiveScreen() ?? NSScreen.main!
         let rect = appStore.isFullscreenMode ? screen.frame : calculateContentRect(for: screen)
@@ -157,8 +159,20 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window.collectionBehavior = [.transient, .canJoinAllApplications, .fullScreenAuxiliary, .ignoresCycle]
         window.orderFrontRegardless()
     }
-    
-    func hideWindow() {
+
+    func requestShowWindow(completion: (() -> Void)? = nil) {
+        guard let window = window else {
+            completion?()
+            return
+        }
+        guard !window.isVisible else {
+            completion?()
+            return
+        }
+        performWindowTransition(.show, completion: completion)
+    }
+
+    private func finalizeHiddenState() {
         resetGesturePreviewState()
         window?.orderOut(nil)
         applyPreviewVisual(scale: 1, alpha: 1)
@@ -170,6 +184,80 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         appStore.saveAllOrder()
         appStore.refresh()
         NotificationCenter.default.post(name: .launchpadWindowHidden, object: nil)
+    }
+
+    func requestHideWindow(completion: (() -> Void)? = nil) {
+        guard let window = window else {
+            completion?()
+            return
+        }
+        guard window.isVisible else {
+            completion?()
+            return
+        }
+        performWindowTransition(.hide, completion: completion)
+    }
+
+    private func performWindowTransition(_ direction: WindowTransitionDirection, completion: (() -> Void)? = nil) {
+        guard let window = window, window.isVisible, !isAnimatingWindowTransition else {
+            if direction == .show, let window, !window.isVisible, !isAnimatingWindowTransition {
+                performShowTransition(window: window, completion: completion)
+                return
+            }
+            completion?()
+            return
+        }
+        performHideTransition(window: window, completion: completion)
+    }
+
+    private func performShowTransition(window: NSWindow, completion: (() -> Void)? = nil) {
+        isAnimatingWindowTransition = true
+        resetGesturePreviewState()
+
+        let targetRect = targetRectForCurrentScreen()
+        gesturePreviewTargetRect = targetRect
+        gesturePreviewMode = .showing
+        gesturePreviewMadeVisible = true
+        gesturePreviewActivated = true
+
+        window.setFrame(targetRect, display: true)
+        applyCornerRadius()
+        applyPreviewVisual(scale: previewScale(for: 0), alpha: previewAlpha(for: 0))
+        window.alphaValue = 1
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
+        window.collectionBehavior = [.transient, .canJoinAllApplications, .fullScreenAuxiliary, .ignoresCycle]
+        window.orderFrontRegardless()
+
+        animatePreviewVisual(toScale: previewScale(for: 1), alpha: previewAlpha(for: 1)) { [weak self] in
+            guard let self else { return }
+            self.isAnimatingWindowTransition = false
+            self.finalizeShownState()
+            completion?()
+        }
+    }
+
+    private func performHideTransition(window: NSWindow, completion: (() -> Void)? = nil) {
+        isAnimatingWindowTransition = true
+        resetGesturePreviewState()
+
+        let targetRect = targetRectForCurrentScreen()
+        gesturePreviewTargetRect = targetRect
+        gesturePreviewMode = .hiding
+        gesturePreviewActivated = true
+
+        if window.frame != targetRect {
+            window.setFrame(targetRect, display: true)
+        }
+        applyCornerRadius()
+        applyPreviewVisual(scale: previewScale(for: 1), alpha: previewAlpha(for: 1))
+
+        animatePreviewVisual(toScale: previewScale(for: 0), alpha: previewAlpha(for: 0)) { [weak self] in
+            guard let self else { return }
+            self.isAnimatingWindowTransition = false
+            self.finalizeHiddenState()
+            completion?()
+        }
     }
     
     func updateWindowMode(isFullscreen: Bool) {
@@ -201,8 +289,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         transitionPreviewModeIfNeeded(for: direction)
         guard let mode = gesturePreviewMode, let targetRect = gesturePreviewTargetRect else { return }
         let resolvedProgress = resolvedProgress(for: direction, progress: clamped)
-        gesturePreviewProgress = resolvedProgress
-        if resolvedProgress >= previewActivationProgress {
+        let smoothedProgress = smoothedPreviewProgress(for: mode, targetProgress: resolvedProgress)
+        gesturePreviewProgress = smoothedProgress
+        if smoothedProgress >= previewActivationProgress {
             gesturePreviewActivated = true
         }
 
@@ -214,18 +303,19 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 gesturePreviewMadeVisible = true
                 window.setFrame(targetRect, display: true)
                 applyCornerRadius()
-                applyPreviewVisual(scale: showingScale(for: resolvedProgress), alpha: showingAlpha(for: resolvedProgress))
+                applyPreviewVisual(scale: previewScale(for: smoothedProgress), alpha: previewAlpha(for: smoothedProgress))
                 window.orderFrontRegardless()
                 return
             }
-            applyPreviewVisual(scale: showingScale(for: resolvedProgress), alpha: showingAlpha(for: resolvedProgress))
+            applyPreviewVisual(scale: previewScale(for: smoothedProgress), alpha: previewAlpha(for: smoothedProgress))
         case .hiding:
             guard direction == .pinchOut, window.isVisible else { return }
             guard gesturePreviewActivated else { return }
             if window.frame != targetRect {
                 window.setFrame(targetRect, display: true)
             }
-            applyPreviewVisual(scale: hidingScale(for: resolvedProgress), alpha: 1 - 0.92 * resolvedProgress)
+            let reversibleProgress = 1 - smoothedProgress
+            applyPreviewVisual(scale: previewScale(for: reversibleProgress), alpha: previewAlpha(for: reversibleProgress))
         }
     }
 
@@ -247,13 +337,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         switch mode {
         case .showing where shouldCompleteCurrentGesture():
             animatePreviewVisual(toScale: 1, alpha: 1) {
-                self.showWindow()
+                self.finalizeShownState()
             }
         case .showing:
             rollbackToHidden(window: window)
         case .hiding where shouldCompleteCurrentGesture():
-            animatePreviewVisual(toScale: hidingScale(for: 1), alpha: 0) {
-                self.hideWindow()
+            animatePreviewVisual(toScale: previewScale(for: 0), alpha: previewAlpha(for: 0)) {
+                self.finalizeHiddenState()
             }
         case .hiding:
             rollbackToShown()
@@ -288,23 +378,39 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             return
         }
         configurePreviewLayerGeometry()
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.16
-            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
-            CATransaction.begin()
-            CATransaction.setAnimationDuration(context.duration)
-            CATransaction.setAnimationTimingFunction(context.timingFunction)
-            contentLayer.opacity = Float(alpha)
-            contentLayer.transform = CATransform3DMakeScale(scale, scale, 1)
-            CATransaction.commit()
-        } completionHandler: {
-            completion?()
-        }
+        let duration: CFTimeInterval = 0.2
+        let timingFunction = CAMediaTimingFunction(name: .easeOut)
+        let currentOpacity = contentLayer.presentation()?.opacity ?? contentLayer.opacity
+        let currentTransform = contentLayer.presentation()?.transform ?? contentLayer.transform
+        let targetOpacity = Float(alpha)
+        let targetTransform = CATransform3DMakeScale(scale, scale, 1)
+
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        CATransaction.setCompletionBlock(completion)
+
+        let opacityAnimation = CABasicAnimation(keyPath: "opacity")
+        opacityAnimation.fromValue = currentOpacity
+        opacityAnimation.toValue = targetOpacity
+        opacityAnimation.duration = duration
+        opacityAnimation.timingFunction = timingFunction
+
+        let transformAnimation = CABasicAnimation(keyPath: "transform")
+        transformAnimation.fromValue = currentTransform
+        transformAnimation.toValue = targetTransform
+        transformAnimation.duration = duration
+        transformAnimation.timingFunction = timingFunction
+
+        contentLayer.opacity = targetOpacity
+        contentLayer.transform = targetTransform
+        contentLayer.add(opacityAnimation, forKey: "launchnow.opacity")
+        contentLayer.add(transformAnimation, forKey: "launchnow.transform")
+        CATransaction.commit()
     }
 
     private func rollbackToHidden(window: NSWindow) {
         guard gesturePreviewMadeVisible else { return }
-        animatePreviewVisual(toScale: showingScale(for: 0), alpha: 0) {
+        animatePreviewVisual(toScale: previewScale(for: 0), alpha: previewAlpha(for: 0)) {
             window.orderOut(nil)
             self.applyPreviewVisual(scale: 1, alpha: 1)
             window.alphaValue = 1
@@ -342,11 +448,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         case (.showing, .pinchOut):
             gesturePreviewMode = .hiding
             gestureCommittedAction = nil
-            gestureContinuityProgress = 1 - gesturePreviewProgress
+            gestureContinuityProgress = currentPreviewProgress(for: .hiding)
         case (.hiding, .pinchIn):
             gesturePreviewMode = .showing
             gestureCommittedAction = nil
-            gestureContinuityProgress = 1 - gesturePreviewProgress
+            gestureContinuityProgress = currentPreviewProgress(for: .showing)
         default:
             break
         }
@@ -382,15 +488,37 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         return gesturePreviewProgress >= gestureCompletionProgressThreshold
     }
 
-    private func showingScale(for progress: CGFloat) -> CGFloat {
+    private func smoothedPreviewProgress(for mode: GesturePreviewMode, targetProgress: CGFloat) -> CGFloat {
+        guard gesturePreviewActivated else { return targetProgress }
+        let currentProgress = currentPreviewProgress(for: mode)
+        if abs(targetProgress - currentProgress) < 0.02 {
+            return targetProgress
+        }
+        return currentProgress + (targetProgress - currentProgress) * previewSmoothingFactor
+    }
+
+    private func currentPreviewProgress(for mode: GesturePreviewMode) -> CGFloat {
+        let scale = currentPreviewScale()
+        switch mode {
+        case .showing:
+            return max(0, min(1, (showStartScale - scale) / (showStartScale - 1)))
+        case .hiding:
+            let visibleProgress = max(0, min(1, (showStartScale - scale) / (showStartScale - 1)))
+            return 1 - visibleProgress
+        }
+    }
+
+    private func currentPreviewScale() -> CGFloat {
+        guard let contentLayer = window?.contentView?.layer else { return 1 }
+        let activeTransform = contentLayer.presentation()?.transform ?? contentLayer.transform
+        return max(1, CGFloat(activeTransform.m11))
+    }
+
+    private func previewScale(for progress: CGFloat) -> CGFloat {
         showStartScale - (showStartScale - 1) * progress
     }
 
-    private func hidingScale(for progress: CGFloat) -> CGFloat {
-        1 + (hideEndScale - 1) * progress
-    }
-
-    private func showingAlpha(for progress: CGFloat) -> CGFloat {
+    private func previewAlpha(for progress: CGFloat) -> CGFloat {
         max(0, (progress - 0.12) / 0.88)
     }
     
@@ -417,15 +545,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     func windowDidResignKey(_ notification: Notification) { autoHideIfNeeded() }
     func windowDidResignMain(_ notification: Notification) { autoHideIfNeeded() }
     private func autoHideIfNeeded() {
-        guard !appStore.isSetting else { return }
-        hideWindow()
+        guard !appStore.isSetting, !isAnimatingWindowTransition else { return }
+        requestHideWindow()
     }
     
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         if window?.isVisible == true {
-            hideWindow()
+            requestHideWindow()
         } else {
-            showWindow()
+            requestShowWindow()
         }
         return false
     }

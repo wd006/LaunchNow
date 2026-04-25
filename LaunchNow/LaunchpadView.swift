@@ -262,7 +262,7 @@ struct LaunchpadView: View {
                                     guard appStore.isFullscreenMode,
                                           appStore.openFolder == nil,
                                           !appStore.isFolderNameEditing else { return }
-                                    AppDelegate.shared?.hideWindow()
+                                    AppDelegate.shared?.requestHideWindow()
                                 }
                             // 内容
                             HStack(spacing: config.pageSpacing) {
@@ -600,8 +600,7 @@ struct LaunchpadView: View {
     }
     
     private func launchApp(_ app: AppInfo) {
-        AppDelegate.shared?.hideWindow()
-        DispatchQueue.main.asyncAfter(deadline: .now()) {
+        AppDelegate.shared?.requestHideWindow {
             NSWorkspace.shared.open(app.url)
         }
     }
@@ -947,7 +946,7 @@ extension LaunchpadView {
         }
 
         if code == 53 { // esc
-            AppDelegate.shared?.hideWindow()
+            AppDelegate.shared?.requestHideWindow()
             return nil
         }
 
