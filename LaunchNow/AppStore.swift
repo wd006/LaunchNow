@@ -58,6 +58,12 @@ final class AppStore: ObservableObject {
             UserDefaults.standard.set(isGlobalPinchEnabled, forKey: "isGlobalPinchEnabled")
         }
     }
+    
+    @Published var isGlasseffectEnabled: Bool = false {
+        didSet {
+            UserDefaults.standard.set(isGlasseffectEnabled, forKey: "isGlasseffectEnabled")
+        }
+    }
 
     private let hiddenAppsDefaultsKey = "hiddenApplicationPaths"
     @Published var hiddenAppPaths: Set<String> = [] {

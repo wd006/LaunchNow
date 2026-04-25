@@ -417,7 +417,11 @@ struct LaunchpadView: View {
             .padding(.horizontal, actualHorizontalPadding)
         }
         .padding()
-        .glassEffect(.regular , in: RoundedRectangle(cornerRadius: appStore.isFullscreenMode ? 0 : 30))
+        .background(
+            appStore.isGlasseffectEnabled
+            ? AnyView(Color.clear.glassEffect(.regular, in: RoundedRectangle(cornerRadius: appStore.isFullscreenMode ? 0 : 30)))
+            : AnyView(Color.clear.background(.thinMaterial, in: RoundedRectangle(cornerRadius: appStore.isFullscreenMode ? 0 : 30)))
+        )
         .ignoresSafeArea()
         .overlay(
             ZStack {
