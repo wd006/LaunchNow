@@ -53,6 +53,12 @@ final class AppStore: ObservableObject {
         }
     }
 
+    @Published var isGlobalPinchEnabled: Bool = false {
+        didSet {
+            UserDefaults.standard.set(isGlobalPinchEnabled, forKey: "isGlobalPinchEnabled")
+        }
+    }
+
     private let hiddenAppsDefaultsKey = "hiddenApplicationPaths"
     @Published var hiddenAppPaths: Set<String> = [] {
         didSet {
@@ -295,6 +301,7 @@ final class AppStore: ObservableObject {
             self.iconScale = 0.8
         }
         self.showAppNameBelowIcon = UserDefaults.standard.object(forKey: "showAppNameBelowIcon") as? Bool ?? true
+        self.isGlobalPinchEnabled = UserDefaults.standard.bool(forKey: "isGlobalPinchEnabled")
         
         if let savedDefaults = UserDefaults.standard.array(forKey: "defaultApplicationSearchPaths") as? [String], !savedDefaults.isEmpty {
             self.defaultSearchPaths = savedDefaults

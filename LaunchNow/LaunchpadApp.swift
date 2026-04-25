@@ -36,10 +36,29 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         Self.shared = self
         
         setupWindow()
+        bindGestureSettings()
         appStore.performInitialScanIfNeeded()
         appStore.startAutoRescan()
         
         if appStore.isFullscreenMode { updateWindowMode(isFullscreen: true) }
+    }
+
+    private func bindGestureSettings() {
+        appStore.$isGlobalPinchEnabled
+            .removeDuplicates()
+            .sink { [weak self] isEnabled in
+                guard let self else { return }
+                if isEnabled {
+                    GlobalPinchGestureMonitor.shared.start(
+                        promptForAccessibility: true,
+                        onPinchIn: { self.showWindow() },
+                        onPinchOut: { self.hideWindow() }
+                    )
+                } else {
+                    GlobalPinchGestureMonitor.shared.stop()
+                }
+            }
+            .store(in: &cancellables)
     }
     
     private func setupWindow() {
@@ -98,6 +117,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let rect = appStore.isFullscreenMode ? screen.frame : calculateContentRect(for: screen)
         window.setFrame(rect, display: true)
         applyCornerRadius()
+        NSApp.activate(ignoringOtherApps: true)
         window.makeKey()
         lastShowAt = Date()
         NotificationCenter.default.post(name: .launchpadWindowShown, object: nil)

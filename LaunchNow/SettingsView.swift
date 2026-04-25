@@ -50,6 +50,12 @@ struct SettingsView: View {
                         .toggleStyle(.switch)
                 }
                 HStack {
+                    Text(NSLocalizedString("Gesture", comment: "Gesture"))
+                    Spacer()
+                    Toggle(isOn: $appStore.isGlobalPinchEnabled) {}
+                        .toggleStyle(.switch)
+                }
+                HStack {
                     Text(NSLocalizedString("ScrollSensitivity", comment: "Scrolling sensitivity"))
                     VStack {
                         Slider(value: $appStore.scrollSensitivity, in: 0.01...0.99)
