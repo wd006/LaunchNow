@@ -53,8 +53,11 @@ private struct FrameTouch {
 private struct PinchSession {
     var fingerIDs = Set<Int32>()
     var initialRadius: CGFloat?
-    var minimumRadius: CGFloat?
-    var maximumRadius: CGFloat?
+}
+
+enum GlobalPinchGestureDirection {
+    case pinchIn
+    case pinchOut
 }
 
 @MainActor
@@ -64,12 +67,14 @@ final class GlobalPinchGestureMonitor {
     private var multitouch: MultitouchAPI?
     private var onPinchIn: (() -> Void)?
     private var onPinchOut: (() -> Void)?
+    private var onProgress: ((GlobalPinchGestureDirection, CGFloat) -> Void)?
+    private var onGestureEnded: (() -> Void)?
     private var lastRecognitionAt = Date.distantPast
     private var session = PinchSession()
 
     private let minimumTouchCount = 4
-    private let pinchInRatioThreshold: CGFloat = 0.72
-    private let pinchOutRatioThreshold: CGFloat = 1.28
+    private let pinchInRatioThreshold: CGFloat = 0.82
+    private let pinchOutRatioThreshold: CGFloat = 1.18
     private let triggerCooldown: TimeInterval = 0.2
 
     private init() {}
@@ -77,10 +82,14 @@ final class GlobalPinchGestureMonitor {
     func start(
         promptForAccessibility: Bool,
         onPinchIn: @escaping () -> Void,
-        onPinchOut: @escaping () -> Void
+        onPinchOut: @escaping () -> Void,
+        onProgress: @escaping (GlobalPinchGestureDirection, CGFloat) -> Void,
+        onGestureEnded: @escaping () -> Void
     ) {
         self.onPinchIn = onPinchIn
         self.onPinchOut = onPinchOut
+        self.onProgress = onProgress
+        self.onGestureEnded = onGestureEnded
         if promptForAccessibility {
             requestAccessibilityTrustIfNeeded()
         }
@@ -100,6 +109,8 @@ final class GlobalPinchGestureMonitor {
         session = PinchSession()
         onPinchIn = nil
         onPinchOut = nil
+        onProgress = nil
+        onGestureEnded = nil
         multitouch?.stop()
         multitouch = nil
     }
@@ -164,36 +175,36 @@ final class GlobalPinchGestureMonitor {
 
         if session.initialRadius == nil {
             session.initialRadius = radius
-            session.minimumRadius = radius
-            session.maximumRadius = radius
             return
         }
 
-        session.minimumRadius = min(session.minimumRadius ?? radius, radius)
-        session.maximumRadius = max(session.maximumRadius ?? radius, radius)
-
         guard
             let initialRadius = session.initialRadius,
-            let minimumRadius = session.minimumRadius,
-            let maximumRadius = session.maximumRadius,
             initialRadius > 0
         else {
             return
         }
 
+        let radiusRatio = radius / initialRadius
+        if radiusRatio < 1 {
+            let pinchInProgress = max(0, min(1, (1 - radiusRatio) / (1 - pinchInRatioThreshold)))
+            onProgress?(.pinchIn, pinchInProgress)
+        } else if radiusRatio > 1 {
+            let pinchOutProgress = max(0, min(1, (radiusRatio - 1) / (pinchOutRatioThreshold - 1)))
+            onProgress?(.pinchOut, pinchOutProgress)
+        }
+
         let now = Date()
         guard now.timeIntervalSince(lastRecognitionAt) >= triggerCooldown else { return }
 
-        let shrinkRatio = minimumRadius / initialRadius
-        if shrinkRatio <= pinchInRatioThreshold {
+        if radiusRatio <= pinchInRatioThreshold {
             lastRecognitionAt = now
             resetTrackingBaseline(to: radius)
             onPinchIn?()
             return
         }
 
-        let expandRatio = maximumRadius / initialRadius
-        if expandRatio >= pinchOutRatioThreshold {
+        if radiusRatio >= pinchOutRatioThreshold {
             lastRecognitionAt = now
             resetTrackingBaseline(to: radius)
             onPinchOut?()
@@ -201,13 +212,14 @@ final class GlobalPinchGestureMonitor {
     }
 
     private func resetSession() {
+        if session.initialRadius != nil {
+            onGestureEnded?()
+        }
         session = PinchSession()
     }
 
     private func resetTrackingBaseline(to radius: CGFloat) {
         session.initialRadius = radius
-        session.minimumRadius = radius
-        session.maximumRadius = radius
     }
 
     private func requestAccessibilityTrustIfNeeded() {
