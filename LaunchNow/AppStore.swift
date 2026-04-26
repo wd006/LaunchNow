@@ -59,7 +59,7 @@ final class AppStore: ObservableObject {
         }
     }
     
-    @Published var isGlasseffectEnabled: Bool = false {
+    @Published var isGlasseffectEnabled: Bool = true {
         didSet {
             UserDefaults.standard.set(isGlasseffectEnabled, forKey: "isGlasseffectEnabled")
         }
@@ -308,6 +308,7 @@ final class AppStore: ObservableObject {
         }
         self.showAppNameBelowIcon = UserDefaults.standard.object(forKey: "showAppNameBelowIcon") as? Bool ?? true
         self.isGlobalPinchEnabled = UserDefaults.standard.bool(forKey: "isGlobalPinchEnabled")
+        self.isGlasseffectEnabled = UserDefaults.standard.bool(forKey: "isGlasseffectEnabled")
         
         if let savedDefaults = UserDefaults.standard.array(forKey: "defaultApplicationSearchPaths") as? [String], !savedDefaults.isEmpty {
             self.defaultSearchPaths = savedDefaults

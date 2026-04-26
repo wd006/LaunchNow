@@ -336,6 +336,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         switch mode {
         case .showing where shouldCompleteCurrentGesture():
+            // Ensure the window gets focus immediately when the show animation starts
+            NSApp.activate(ignoringOtherApps: true)
+            window.makeKeyAndOrderFront(nil)
+            window.orderFrontRegardless()
             animatePreviewVisual(toScale: 1, alpha: 1) {
                 self.finalizeShownState()
             }
