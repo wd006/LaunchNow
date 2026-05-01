@@ -2125,8 +2125,8 @@ struct GridConfig {
     let columnSpacing: CGFloat = 24
     
     struct PageNavigation {
-        let edgeFlipMargin: CGFloat = 15
-        let autoFlipInterval: TimeInterval = 0.8 // 拖拽贴边翻页两次之间间隔0.8秒
+        let edgeFlipMargin: CGFloat = 5
+        let autoFlipInterval: TimeInterval = 0.2 // 拖拽贴边翻页两次之间间隔
         let scrollPageThreshold: CGFloat = 0.75
         let scrollFinishThreshold: CGFloat = 0.5
     }

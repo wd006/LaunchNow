@@ -48,6 +48,8 @@ private struct FrameTouch {
     let id: Int32
     let x: CGFloat
     let y: CGFloat
+    let vx: CGFloat
+    let vy: CGFloat
 }
 
 private struct PinchSession {
@@ -79,6 +81,9 @@ final class GlobalPinchGestureMonitor {
     private let triggerCooldown: TimeInterval = 0.2
     private let radiusFilterFactor: CGFloat = 0.28
     private let progressDeadZone: CGFloat = 0.015
+    private let minimumVelocityThreshold: CGFloat = 0.005
+    /// 最大角度聚类范围（弧度），小于此值视为滑动手势
+    private let swipeAngleThreshold: CGFloat = .pi / 3  // 60°
 
     private init() {}
 
@@ -140,7 +145,9 @@ final class GlobalPinchGestureMonitor {
             return FrameTouch(
                 id: touch.fingerID,
                 x: CGFloat(touch.normalizedVector.position.x),
-                y: CGFloat(touch.normalizedVector.position.y)
+                y: CGFloat(touch.normalizedVector.position.y),
+                vx: CGFloat(touch.normalizedVector.velocity.x),
+                vy: CGFloat(touch.normalizedVector.velocity.y)
             )
         }
 
@@ -166,6 +173,13 @@ final class GlobalPinchGestureMonitor {
         if session.fingerIDs != ids {
             session = PinchSession()
             session.fingerIDs = ids
+        }
+
+        // 速度方向聚类检测：若 3+ 手指有明显运动且方向一致，判定为滑动，不处理
+        let movingCount = touches.filter { hypot($0.vx, $0.vy) > minimumVelocityThreshold }.count
+        if movingCount >= 3 && isSwipeGesture(touches: touches) {
+            resetSession()
+            return
         }
 
         let center = CGPoint(
@@ -219,6 +233,26 @@ final class GlobalPinchGestureMonitor {
             resetTrackingBaseline(to: radius)
             onPinchOut?()
         }
+    }
+
+    /// 判断手指速度方向是否高度一致（聚类于小角度范围），若是则判定为滑动手势。
+    private func isSwipeGesture(touches: [FrameTouch]) -> Bool {
+        guard touches.count >= 4 else { return false }
+
+        let angles = touches.map { atan2($0.vy, $0.vx) }
+        let sorted = angles.sorted()
+        let n = sorted.count
+
+        var maxGap: CGFloat = 0
+        for i in 0..<n {
+            var gap = sorted[(i + 1) % n] - sorted[i]
+            if gap < 0 { gap += 2 * .pi }
+            maxGap = max(maxGap, gap)
+        }
+
+        // 最大间隙的补角即为所有角度的聚类范围
+        let clusterRange = 2 * .pi - maxGap
+        return clusterRange < swipeAngleThreshold
     }
 
     private func resetSession() {
