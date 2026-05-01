@@ -55,3 +55,12 @@
 "Small" = "Klein";
 "Large" = "Groß";
 "DefaultSize" = "Standardgröße";
+
+"HiddenApps" = "Hidden apps";
+"HideAppsHint" = "Select apps to hide; they won't appear in the app grid.";
+"NoHiddenApps" = "No hidden apps";
+"Hide" = "Hide";
+"ClearHiddenApps" = "Clear hidden";
+"MoveToFolder" = "Move to Folder";
+"Gesture" = "4-Finger Trackpad Gesture";
+"Glasseffect" = "Enable Glass Effect Background";

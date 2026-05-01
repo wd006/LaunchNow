@@ -24,6 +24,8 @@ struct WelcomeView: View {
                 Text(NSLocalizedString("Hover", comment: "hover"))
                 Text(NSLocalizedString("RunOnBackground", comment: "RunOnBackGround"))
                 Text(NSLocalizedString("Keyboard", comment: "Keyboard"))
+                Text("https://github.com/ggkevinnnn/LaunchNow")
+                    .padding()
             }
             .padding()
             
