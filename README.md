@@ -161,6 +161,11 @@ This project is licensed under the MIT License — see the [LICENSE](LICENSE) fi
 
 ---
 
+<details>
+<summary><b>🇨🇳 简体中文</b></summary>
+
+<br>
+
 <a name="readme-zh"></a>
 
 ## 🇨🇳 简体中文
@@ -294,3 +299,5 @@ LaunchNow 支持 **13 种语言**：
 ### 📄 许可证
 
 本项目采用 MIT 许可证 — 详情请查看 [LICENSE](LICENSE) 文件。
+
+</details>
