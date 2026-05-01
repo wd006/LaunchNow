@@ -7,6 +7,7 @@ import QuartzCore
 extension Notification.Name {
     static let launchpadWindowShown = Notification.Name("LaunchpadWindowShown")
     static let launchpadWindowHidden = Notification.Name("LaunchpadWindowHidden")
+    static let launchpadFocusSearchField = Notification.Name("LaunchpadFocusSearchField")
 }
 
 class BorderlessWindow: NSWindow {
@@ -228,6 +229,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window.makeKeyAndOrderFront(nil)
         window.collectionBehavior = [.transient, .canJoinAllApplications, .fullScreenAuxiliary, .ignoresCycle]
         window.orderFrontRegardless()
+        NotificationCenter.default.post(name: .launchpadFocusSearchField, object: nil)
 
         animatePreviewVisual(toScale: previewScale(for: 1), alpha: previewAlpha(for: 1)) { [weak self] in
             guard let self else { return }
@@ -340,6 +342,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             NSApp.activate(ignoringOtherApps: true)
             window.makeKeyAndOrderFront(nil)
             window.orderFrontRegardless()
+            NotificationCenter.default.post(name: .launchpadFocusSearchField, object: nil)
             animatePreviewVisual(toScale: 1, alpha: 1) {
                 self.finalizeShownState()
             }

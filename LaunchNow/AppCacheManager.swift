@@ -1,6 +1,7 @@
 import Foundation
 import AppKit
 import Combine
+import os.lock
 
 /// 应用缓存管理器 - 负责缓存应用图标、应用信息和网格布局数据以提高性能
 final class AppCacheManager: ObservableObject {
@@ -10,18 +11,16 @@ final class AppCacheManager: ObservableObject {
     private var iconCache: [String: NSImage] = [:]
     private var appInfoCache: [String: AppInfo] = [:]
     private var gridLayoutCache: [String: Any] = [:]
-    private let cacheLock = NSLock()
+    private var cacheLock = os_unfair_lock()
     
     // MARK: - 缓存配置
     private let maxIconCacheSize = 500
     private let maxAppInfoCacheSize = 500
-    private var iconCacheOrder: [String] = [] // 改为可变数组，实现真正的LRU
+    private var iconCacheOrder: [String] = []
     
     // MARK: - 缓存状态
     @Published var isCacheValid = false
     @Published var lastCacheUpdate = Date.distantPast
-    // MARK: - 缓存键生成
-    private let cacheKeyGenerator = CacheKeyGenerator()
     
     private init() {}
     // MARK: - 公共接口
@@ -73,10 +72,10 @@ final class AppCacheManager: ObservableObject {
     
     /// 获取缓存的应用图标
     func getCachedIcon(for appPath: String) -> NSImage? {
-        let key = cacheKeyGenerator.generateIconKey(for: appPath)
+        let key = cacheKeyForIcon(appPath)
         
-        cacheLock.lock()
-        defer { cacheLock.unlock() }
+        os_unfair_lock_lock(&cacheLock)
+        defer { os_unfair_lock_unlock(&cacheLock) }
         if let icon = iconCache[key] {
             if let index = iconCacheOrder.firstIndex(of: key) {
                 iconCacheOrder.remove(at: index)
@@ -90,13 +89,17 @@ final class AppCacheManager: ObservableObject {
     
     /// 获取缓存的应用信息
     func getCachedAppInfo(for appPath: String) -> AppInfo? {
-        let key = cacheKeyGenerator.generateAppInfoKey(for: appPath)
+        let key = cacheKeyForAppInfo(appPath)
+        os_unfair_lock_lock(&cacheLock)
+        defer { os_unfair_lock_unlock(&cacheLock) }
         return appInfoCache[key]
     }
     
     /// 获取缓存的网格布局数据
     func getCachedGridLayout(for layoutKey: String) -> Any? {
-        let key = cacheKeyGenerator.generateGridLayoutKey(for: layoutKey)
+        let key = cacheKeyForGridLayout(layoutKey)
+        os_unfair_lock_lock(&cacheLock)
+        defer { os_unfair_lock_unlock(&cacheLock) }
         return gridLayoutCache[key]
     }
     
@@ -108,8 +111,8 @@ final class AppCacheManager: ObservableObject {
             for path in appPaths {
                 if self.getCachedIcon(for: path) == nil {
                     let icon = NSWorkspace.shared.icon(forFile: path)
-                    let key = self.cacheKeyGenerator.generateIconKey(for: path)
-                    self.cacheLock.lock()
+                    let key = cacheKeyForIcon(path)
+                    os_unfair_lock_lock(&self.cacheLock)
                     self.iconCache[key] = icon
                     self.iconCacheOrder.append(key)
                     if self.iconCache.count > self.maxIconCacheSize {
@@ -118,7 +121,7 @@ final class AppCacheManager: ObservableObject {
                             self.iconCacheOrder.removeFirst()
                         }
                     }
-                    self.cacheLock.unlock()
+                    os_unfair_lock_unlock(&self.cacheLock)
                 }
             }
             
@@ -130,7 +133,8 @@ final class AppCacheManager: ObservableObject {
         let startIndex = max(0, (currentPage - 1) * itemsPerPage)
         let endIndex = min(items.count, (currentPage + 2) * itemsPerPage)
         
-        let relevantItems = Array(items[startIndex..<endIndex])
+        guard startIndex < endIndex else { return }
+        let relevantItems = items[startIndex..<endIndex]
         let appPaths = relevantItems.compactMap { item -> String? in
             if case let .app(app) = item {
                 return app.url.path
@@ -143,12 +147,12 @@ final class AppCacheManager: ObservableObject {
     
     /// 清除所有缓存
     func clearAllCaches() {
-        cacheLock.lock()
+        os_unfair_lock_lock(&cacheLock)
         iconCache.removeAll()
         appInfoCache.removeAll()
         gridLayoutCache.removeAll()
         iconCacheOrder.removeAll()
-        cacheLock.unlock()
+        os_unfair_lock_unlock(&cacheLock)
         
         DispatchQueue.main.async {
             self.isCacheValid = false
@@ -194,18 +198,18 @@ final class AppCacheManager: ObservableObject {
     // MARK: - 私有方法
     
     private func cacheAppInfos(_ apps: [AppInfo]) {
-        cacheLock.lock()
+        os_unfair_lock_lock(&cacheLock)
         for app in apps {
-            let key = cacheKeyGenerator.generateAppInfoKey(for: app.url.path)
+            let key = cacheKeyForAppInfo(app.url.path)
             appInfoCache[key] = app
         }
-        cacheLock.unlock()
+        os_unfair_lock_unlock(&cacheLock)
     }
     
     private func cacheAppIcons(_ apps: [AppInfo]) {
-        cacheLock.lock()
+        os_unfair_lock_lock(&cacheLock)
         for app in apps {
-            let key = cacheKeyGenerator.generateIconKey(for: app.url.path)
+            let key = cacheKeyForIcon(app.url.path)
             if let existingIndex = iconCacheOrder.firstIndex(of: key) {
                 iconCacheOrder.remove(at: existingIndex)
             }
@@ -218,7 +222,7 @@ final class AppCacheManager: ObservableObject {
                 }
             }
         }
-        cacheLock.unlock()
+        os_unfair_lock_unlock(&cacheLock)
     }
     
     private func cacheGridLayout(_ items: [LaunchpadItem]) {
@@ -231,12 +235,12 @@ final class AppCacheManager: ObservableObject {
             pageCount: (items.count + 34) / 35
         )
         let pageInfo = calculatePageInfo(for: items)
-        let key = cacheKeyGenerator.generateGridLayoutKey(for: "main")
-        let pageKey = cacheKeyGenerator.generateGridLayoutKey(for: "pages")
-        cacheLock.lock()
+        let key = cacheKeyForGridLayout("main")
+        let pageKey = cacheKeyForGridLayout("pages")
+        os_unfair_lock_lock(&cacheLock)
         gridLayoutCache[key] = layoutData
         gridLayoutCache[pageKey] = pageInfo
-        cacheLock.unlock()
+        os_unfair_lock_unlock(&cacheLock)
         
     }
     
@@ -246,15 +250,22 @@ final class AppCacheManager: ObservableObject {
         let pageCount = (items.count + itemsPerPage - 1) / itemsPerPage
         
         var pages: [PageInfo] = []
+        pages.reserveCapacity(pageCount)
         
         for pageIndex in 0..<pageCount {
             let startIndex = pageIndex * itemsPerPage
             let endIndex = min(startIndex + itemsPerPage, items.count)
-            let pageItems = Array(items[startIndex..<endIndex])
+            var appCount = 0
+            var folderCount = 0
+            var emptyCount = 0
             
-            let appCount = pageItems.filter { if case .app = $0 { return true } else { return false } }.count
-            let folderCount = pageItems.filter { if case .folder = $0 { return true } else { return false } }.count
-            let emptyCount = pageItems.filter { if case .empty = $0 { return true } else { return false } }.count
+            for item in items[startIndex..<endIndex] {
+                switch item {
+                case .app: appCount += 1
+                case .folder: folderCount += 1
+                case .empty: emptyCount += 1
+                }
+            }
             
             let pageInfo = PageInfo(
                 pageIndex: pageIndex,
@@ -273,20 +284,17 @@ final class AppCacheManager: ObservableObject {
     
 }
 
-// MARK: - 缓存键生成器
+// MARK: - 缓存键生成（使用原始路径避免 hashValue 碰撞）
+private func cacheKeyForIcon(_ appPath: String) -> String {
+    return "icon_\(appPath)"
+}
 
-private struct CacheKeyGenerator {
-    func generateIconKey(for appPath: String) -> String {
-        return "icon_\(appPath.hashValue)"
-    }
-    
-    func generateAppInfoKey(for appPath: String) -> String {
-        return "appinfo_\(appPath.hashValue)"
-    }
-    
-    func generateGridLayoutKey(for layoutKey: String) -> String {
-        return "grid_\(layoutKey.hashValue)"
-    }
+private func cacheKeyForAppInfo(_ appPath: String) -> String {
+    return "appinfo_\(appPath)"
+}
+
+private func cacheKeyForGridLayout(_ layoutKey: String) -> String {
+    return "grid_\(layoutKey)"
 }
 
 // MARK: - 网格布局缓存数据结构

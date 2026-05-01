@@ -40,6 +40,7 @@ struct LaunchpadView: View {
     @ObservedObject var appStore: AppStore
     @State private var keyMonitor: Any?
     @State private var windowObserver: NSObjectProtocol?
+    @State private var focusObserver: NSObjectProtocol?
     @State private var windowHiddenObserver: NSObjectProtocol?
     @State private var draggingItem: LaunchpadItem?
     @State private var dragPreviewPosition: CGPoint = .zero
@@ -292,7 +293,7 @@ struct LaunchpadView: View {
                                                 }
                                             }
                                             .animation(LNAnimations.easeInOut, value: pendingDropIndex)
-                                            .animation(LNAnimations.easeInOut, value: appStore.gridRefreshTrigger)
+                                            .animation(LNAnimations.easeInOut, value: selectedIndex)
                                             .frame(maxHeight: .infinity, alignment: .top)
                                         } else {
                                             Color.clear
@@ -417,11 +418,13 @@ struct LaunchpadView: View {
             .padding(.horizontal, actualHorizontalPadding)
         }
         .padding()
-        .background(
-            appStore.isGlasseffectEnabled
-            ? AnyView(Color.clear.glassEffect(.regular, in: RoundedRectangle(cornerRadius: appStore.isFullscreenMode ? 0 : 30)))
-            : AnyView(Color.clear.background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: appStore.isFullscreenMode ? 0 : 30)))
-        )
+        .background {
+            if appStore.isGlasseffectEnabled {
+                Color.clear.glassEffect(.regular, in: RoundedRectangle(cornerRadius: appStore.isFullscreenMode ? 0 : 30))
+            } else {
+                Color.clear.background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: appStore.isFullscreenMode ? 0 : 30))
+            }
+        }
         .ignoresSafeArea()
         .overlay(
             ZStack {
@@ -544,6 +547,7 @@ struct LaunchpadView: View {
              setupKeyHandlers()
              setupInitialSelection()
              setupWindowShownObserver()
+             setupFocusObserver()
              setupWindowHiddenObserver()
              // 监听全局鼠标抬起，确保拖拽状态被正确清理（窗口外释放时）
              if let existing = globalMouseUpMonitor { NSEvent.removeMonitor(existing) }
@@ -589,7 +593,7 @@ struct LaunchpadView: View {
                 if let monitor = monitor { NSEvent.removeMonitor(monitor) }
             }
             if let monitor = globalMouseUpMonitor { NSEvent.removeMonitor(monitor) }
-            [windowObserver, windowHiddenObserver].forEach { observer in
+            [windowObserver, windowHiddenObserver, focusObserver].forEach { observer in
                 if let observer = observer { NotificationCenter.default.removeObserver(observer) }
             }
             if let monitor = flagsMonitor { NSEvent.removeMonitor(monitor) }
@@ -599,6 +603,7 @@ struct LaunchpadView: View {
             dragContinuationMonitor = nil
             globalMouseUpMonitor = nil
             windowObserver = nil
+            focusObserver = nil
             windowHiddenObserver = nil
         }
     }
@@ -892,7 +897,17 @@ extension LaunchpadView {
             }
         }
     }
-    
+
+    private func setupFocusObserver() {
+        if let observer = focusObserver {
+            NotificationCenter.default.removeObserver(observer)
+            focusObserver = nil
+        }
+        focusObserver = NotificationCenter.default.addObserver(forName: .launchpadFocusSearchField, object: nil, queue: .main) { _ in
+            self.isSearchFieldFocused = true
+        }
+    }
+
     private func setupWindowHiddenObserver() {
         if let observer = windowHiddenObserver {
             NotificationCenter.default.removeObserver(observer)
@@ -1268,11 +1283,9 @@ extension LaunchpadView {
         let origin = cellOrigin(for: globalIndex, in: containerSize, pageIndex: pageIndex, columnWidth: columnWidth, appHeight: appHeight)
         let center = CGPoint(x: origin.x + columnWidth / 2, y: origin.y + appHeight / 2)
         
-        // 异步更新缓存，避免在视图更新期间修改状态
-        DispatchQueue.main.async {
-            Self.geometryCache[cacheKey] = center
-            Self.lastGeometryUpdate = now
-        }
+        // 直接更新缓存（这些函数总是在主线程调用）
+        Self.geometryCache[cacheKey] = center
+        Self.lastGeometryUpdate = now
         
         return center
     }
@@ -1339,11 +1352,9 @@ extension LaunchpadView {
             height: centerAreaSize
         )
         
-        // 异步更新缓存，避免在视图更新期间修改状态
-        DispatchQueue.main.async {
-            Self.geometryCache[cacheKey] = targetCenter
-            Self.lastGeometryUpdate = now
-        }
+        // 直接更新缓存（这些函数总是在主线程调用）
+        Self.geometryCache[cacheKey] = targetCenter
+        Self.lastGeometryUpdate = now
         
         return centerAreaRect.contains(point)
     }

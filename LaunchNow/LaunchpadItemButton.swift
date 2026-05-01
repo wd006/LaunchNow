@@ -16,7 +16,6 @@ struct LaunchpadItemButton: View {
     
     @State private var isHovered = false
     @State private var lastTapTime = Date.distantPast
-    @State private var forceRefreshTrigger: UUID = UUID()
     private let doubleTapThreshold: TimeInterval = 0.3
     
     private var effectiveScale: CGFloat {
@@ -28,7 +27,31 @@ struct LaunchpadItemButton: View {
         if case .folder = item { return true }
         return false
     }
-    
+
+    // Memoized icon to avoid recomputing on every body invocation
+    @inline(__always)
+    private func resolveIcon() -> NSImage {
+        switch item {
+        case .app(let app):
+            // 尝试从缓存获取图标
+            if let cachedIcon = AppCacheManager.shared.getCachedIcon(for: app.url.path),
+               cachedIcon.size.width > 0, cachedIcon.size.height > 0 {
+                return cachedIcon
+            }
+            // 使用自身图标或兜底到系统图标
+            let base = app.icon
+            if base.size.width > 0 && base.size.height > 0 {
+                return base
+            } else {
+                return NSWorkspace.shared.icon(forFile: app.url.path)
+            }
+        case .folder(let folder):
+            return folder.icon(of: iconSize)
+        case .empty:
+            return item.icon
+        }
+    }
+
     init(
         item: LaunchpadItem,
         iconSize: CGFloat = 72,
@@ -50,30 +73,10 @@ struct LaunchpadItemButton: View {
         }
 
     var body: some View {
-        Button(action: handleTap) {
+        let renderedIcon = resolveIcon()
+        return Button(action: handleTap) {
             VStack(spacing: 8) {
                 ZStack {
-                    let renderedIcon: NSImage = {
-                        switch item {
-                        case .app(let app):
-                            // 尝试从缓存获取图标
-                            if let cachedIcon = AppCacheManager.shared.getCachedIcon(for: app.url.path), cachedIcon.size.width > 0, cachedIcon.size.height > 0 {
-                                return cachedIcon
-                            }
-                            // 使用自身图标或兜底到系统图标
-                            let base = app.icon
-                            if base.size.width > 0 && base.size.height > 0 {
-                                return base
-                            } else {
-                                return NSWorkspace.shared.icon(forFile: app.url.path)
-                            }
-                        case .folder(let folder):
-                            return folder.icon(of: iconSize)
-                        case .empty:
-                            return item.icon
-                        }
-                    }()
-                    
                     if isFolderIcon {   
                         RoundedRectangle(cornerRadius: iconSize * 0.2)
                             .foregroundStyle(Color.clear)
@@ -91,11 +94,10 @@ struct LaunchpadItemButton: View {
                         .interpolation(.high)
                         .antialiased(true)
                         .frame(width: iconSize, height: iconSize)
-                        .id(item.id + "_" + forceRefreshTrigger.uuidString) // 使用组合ID强制刷新，确保文件夹图标能够正确更新
                 }
-                .contentShape(Rectangle()) // 确保整个区域可以接收事件
+                .contentShape(Rectangle())
                 .scaleEffect(isSelected ? 1.2 : effectiveScale)
-                .animation(LNAnimations.easeInOut, value: isHovered || isSelected) // 为文件夹添加轻微延迟，防止过早移动
+                .animation(LNAnimations.easeInOut, value: isHovered || isSelected)
 
                 if appStore.showAppNameBelowIcon {
                     Text(item.name)
@@ -121,11 +123,6 @@ struct LaunchpadItemButton: View {
             if !shouldAllowHover, isHovered {
                 isHovered = false
             }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: FolderInfo.folderIconDidUpdate)) { note in
-            guard case .folder(let folder) = item else { return }
-            guard let updatedFolderId = note.object as? String, updatedFolderId == folder.id else { return }
-            forceRefreshTrigger = UUID()
         }
     }
     

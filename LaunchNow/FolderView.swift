@@ -111,24 +111,12 @@ struct FolderView: View {
         }
         .onChange(of: folder.apps) {
             clampSelection()
-            // Removed forceRefreshTrigger = UUID()
         }
         .onChange(of: folder.name) {
             // 监听文件夹名称变化，确保界面立即更新
             if !isEditingName {
                 folderName = folder.name
-                // Removed forceRefreshTrigger = UUID()
             }
-        }
-        .onChange(of: appStore.folderUpdateTrigger) {
-            // Removed forceRefreshTrigger = UUID()
-            // 触发视图重新渲染
-            folderName = folder.name
-        }
-        .onChange(of: appStore.gridRefreshTrigger) {
-            // Removed forceRefreshTrigger = UUID()
-            // 触发视图重新渲染
-            folderName = folder.name
         }
         .onDisappear {
             if let monitor = keyMonitor {

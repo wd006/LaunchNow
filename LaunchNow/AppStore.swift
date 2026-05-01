@@ -23,9 +23,7 @@ final class AppStore: ObservableObject {
                 }
             }
             
-            DispatchQueue.main.async { [weak self] in
-                self?.triggerGridRefresh()
-            }
+            triggerGridRefresh()
         }
     }
     
@@ -38,18 +36,14 @@ final class AppStore: ObservableObject {
     @Published var iconScale: Double = 0.8 {
         didSet {
             UserDefaults.standard.set(iconScale, forKey: "iconScale")
-            DispatchQueue.main.async { [weak self] in
-                self?.triggerGridRefresh()
-            }
+            triggerGridRefresh()
         }
     }
     
     @Published var showAppNameBelowIcon: Bool = true {
         didSet {
             UserDefaults.standard.set(showAppNameBelowIcon, forKey: "showAppNameBelowIcon")
-            DispatchQueue.main.async { [weak self] in
-                self?.triggerGridRefresh()
-            }
+            triggerGridRefresh()
         }
     }
 
@@ -140,6 +134,7 @@ final class AppStore: ObservableObject {
     private let refreshQueue = DispatchQueue(label: "app.store.refresh", qos: .userInitiated)
     private let searchQueue = DispatchQueue(label: "app.store.search", qos: .userInitiated)
     private var gridRefreshWorkItem: DispatchWorkItem?
+    private var folderUpdateWorkItem: DispatchWorkItem?
     private var rescanWorkItem: DispatchWorkItem?
     private let fsEventsQueue = DispatchQueue(label: "app.store.fsevents")
     private let fsEventsStateLock = NSLock()
@@ -253,7 +248,6 @@ final class AppStore: ObservableObject {
         }
 
         rebuildItems()
-        compactItemsWithinPages()
         removeEmptyPages()
         pruneEmptyFolders()
         triggerFolderUpdate()
@@ -1192,7 +1186,6 @@ final class AppStore: ObservableObject {
                             }
                         }
                     }
-                    self.compactItemsWithinPages()
                     self.rebuildItems()
                 }
                 
@@ -2006,13 +1999,25 @@ final class AppStore: ObservableObject {
     }
 
     // 触发文件夹更新，通知所有相关视图刷新图标
+    // 使用 DispatchWorkItem 去抖，合并短时间内多次调用为一次更新
     func triggerFolderUpdate() {
-        folderUpdateTrigger = UUID()
+        folderUpdateWorkItem?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            self?.folderUpdateTrigger = UUID()
+        }
+        folderUpdateWorkItem = work
+        DispatchQueue.main.async(execute: work)
     }
     
     // 触发网格视图刷新，用于拖拽操作后的界面更新
+    // 使用 DispatchWorkItem 去抖，合并短时间内多次调用为一次更新
     func triggerGridRefresh() {
-        gridRefreshTrigger = UUID()
+        gridRefreshWorkItem?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            self?.gridRefreshTrigger = UUID()
+        }
+        gridRefreshWorkItem = work
+        DispatchQueue.main.async(execute: work)
     }
     
     
