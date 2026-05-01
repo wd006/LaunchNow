@@ -56,6 +56,8 @@ private struct PinchSession {
     var fingerIDs = Set<Int32>()
     var initialRadius: CGFloat?
     var filteredRadius: CGFloat?
+    var filteredProgress: CGFloat = 0
+    var touchLossCount: Int = 0
 }
 
 enum GlobalPinchGestureDirection {
@@ -79,8 +81,12 @@ final class GlobalPinchGestureMonitor {
     private let pinchInRatioThreshold: CGFloat = 0.9
     private let pinchOutRatioThreshold: CGFloat = 1.1
     private let triggerCooldown: TimeInterval = 0.2
-    private let radiusFilterFactor: CGFloat = 0.28
+    private let radiusFilterFactor: CGFloat = 0.20
     private let progressDeadZone: CGFloat = 0.015
+    /// 进度 EMA 平滑系数（值越小越平滑）
+    private let progressFilterFactor: CGFloat = 0.30
+    /// 连续丢帧容忍次数，超过才重置会话
+    private let touchLossDebounce: Int = 5
     private let minimumVelocityThreshold: CGFloat = 0.005
     /// 最大角度聚类范围（弧度），小于此值视为滑动手势
     private let swipeAngleThreshold: CGFloat = .pi / 3  // 60°
@@ -158,17 +164,26 @@ final class GlobalPinchGestureMonitor {
     }
 
     private func process(activeTouches: [FrameTouch]) {
+        // 会话防抖：容忍短暂丢帧，避免因瞬态触丢失重置而闪烁
         guard activeTouches.count >= minimumTouchCount else {
-            resetSession()
+            session.touchLossCount += 1
+            if session.touchLossCount >= touchLossDebounce {
+                resetSession()
+            }
             return
         }
+        session.touchLossCount = 0
 
         let touches = Array(activeTouches.sorted { $0.id < $1.id }.prefix(minimumTouchCount))
         let ids = Set(touches.map(\.id))
         if ids.count < minimumTouchCount {
-            resetSession()
+            session.touchLossCount += 1
+            if session.touchLossCount >= touchLossDebounce {
+                resetSession()
+            }
             return
         }
+        session.touchLossCount = 0
 
         if session.fingerIDs != ids {
             session = PinchSession()
@@ -193,6 +208,7 @@ final class GlobalPinchGestureMonitor {
         if session.initialRadius == nil {
             session.initialRadius = radius
             session.filteredRadius = radius
+            session.filteredProgress = 0
             return
         }
 
@@ -208,14 +224,20 @@ final class GlobalPinchGestureMonitor {
         session.filteredRadius = filteredRadius
         let radiusRatio = filteredRadius / initialRadius
         if abs(radiusRatio - 1) < progressDeadZone {
+            // 方向切换时重置进度平滑状态
+            session.filteredProgress = 0
             return
         }
         if radiusRatio < 1 {
-            let pinchInProgress = max(0, min(1, (1 - radiusRatio) / (1 - pinchInRatioThreshold)))
-            onProgress?(.pinchIn, pinchInProgress)
+            let rawProgress = (1 - radiusRatio) / (1 - pinchInRatioThreshold)
+            let clamped = max(0, min(1, rawProgress))
+            session.filteredProgress += (clamped - session.filteredProgress) * progressFilterFactor
+            onProgress?(.pinchIn, session.filteredProgress)
         } else if radiusRatio > 1 {
-            let pinchOutProgress = max(0, min(1, (radiusRatio - 1) / (pinchOutRatioThreshold - 1)))
-            onProgress?(.pinchOut, pinchOutProgress)
+            let rawProgress = (radiusRatio - 1) / (pinchOutRatioThreshold - 1)
+            let clamped = max(0, min(1, rawProgress))
+            session.filteredProgress += (clamped - session.filteredProgress) * progressFilterFactor
+            onProgress?(.pinchOut, session.filteredProgress)
         }
 
         let now = Date()
@@ -223,14 +245,14 @@ final class GlobalPinchGestureMonitor {
 
         if radiusRatio <= pinchInRatioThreshold {
             lastRecognitionAt = now
-            resetTrackingBaseline(to: radius)
+            resetTrackingBaseline()
             onPinchIn?()
             return
         }
 
         if radiusRatio >= pinchOutRatioThreshold {
             lastRecognitionAt = now
-            resetTrackingBaseline(to: radius)
+            resetTrackingBaseline()
             onPinchOut?()
         }
     }
@@ -262,9 +284,10 @@ final class GlobalPinchGestureMonitor {
         session = PinchSession()
     }
 
-    private func resetTrackingBaseline(to radius: CGFloat) {
-        session.initialRadius = radius
-        session.filteredRadius = radius
+    private func resetTrackingBaseline() {
+        guard let filtered = session.filteredRadius else { return }
+        session.initialRadius = filtered
+        session.filteredProgress = 0
     }
 
     private func requestAccessibilityTrustIfNeeded() {

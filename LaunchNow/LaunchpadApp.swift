@@ -52,10 +52,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var gestureContinuityProgress: CGFloat?
     private var gesturePreviewActivated = false
     private var isAnimatingWindowTransition = false
-    private let showStartScale: CGFloat = 1.28
+    private let showStartScale: CGFloat = 2
     private let previewActivationProgress: CGFloat = 0.08
     private let gestureCompletionProgressThreshold: CGFloat = 0.52
-    private let previewSmoothingFactor: CGFloat = 0.42
+    private let previewSmoothingFactor: CGFloat = 0.35
     
     let appStore = AppStore()
     var modelContainer: ModelContainer?
