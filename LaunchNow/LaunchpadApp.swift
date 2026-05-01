@@ -52,11 +52,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var gestureContinuityProgress: CGFloat?
     private var gesturePreviewActivated = false
     private var isAnimatingWindowTransition = false
-    private var previousActiveApp: NSRunningApplication?
-    private let showStartScale: CGFloat = 1.6
+    private let showStartScale: CGFloat = 1.3
     private let previewActivationProgress: CGFloat = 0.08
     private let gestureCompletionProgressThreshold: CGFloat = 0.52
-    private let previewSmoothingFactor: CGFloat = 0.35
+    private let previewSmoothingFactor: CGFloat = 0.42
     
     let appStore = AppStore()
     var modelContainer: ModelContainer?
@@ -305,10 +304,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 window.setFrame(targetRect, display: true)
                 applyCornerRadius()
                 applyPreviewVisual(scale: previewScale(for: smoothedProgress), alpha: previewAlpha(for: smoothedProgress))
-                // 手势开始时立即切换焦点到本窗口
-                previousActiveApp = NSWorkspace.shared.runningApplications.first(where: { $0.isActive })
-                NSApp.activate(ignoringOtherApps: true)
-                window.makeKeyAndOrderFront(nil)
                 window.orderFrontRegardless()
                 return
             }
@@ -341,6 +336,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         switch mode {
         case .showing where shouldCompleteCurrentGesture():
+            // Ensure the window gets focus immediately when the show animation starts
+            NSApp.activate(ignoringOtherApps: true)
+            window.makeKeyAndOrderFront(nil)
+            window.orderFrontRegardless()
             animatePreviewVisual(toScale: 1, alpha: 1) {
                 self.finalizeShownState()
             }
@@ -364,10 +363,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 window.orderOut(nil)
             }
         }
-        // 恢复焦点到之前的应用
-        if let prevApp = previousActiveApp {
-            prevApp.activate(options: .activateIgnoringOtherApps)
-        }
         resetGesturePreviewState()
     }
 
@@ -379,7 +374,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         gesturePreviewProgress = 0
         gestureContinuityProgress = nil
         gesturePreviewActivated = false
-        previousActiveApp = nil
     }
 
     private func animatePreviewVisual(toScale scale: CGFloat, alpha: CGFloat, completion: (() -> Void)?) {
@@ -388,7 +382,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             return
         }
         configurePreviewLayerGeometry()
-        let duration: CFTimeInterval = 0.25
+        let duration: CFTimeInterval = 0.2
         let timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
         let currentOpacity = contentLayer.presentation()?.opacity ?? contentLayer.opacity
         let currentTransform = contentLayer.presentation()?.transform ?? contentLayer.transform
@@ -424,11 +418,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             window.orderOut(nil)
             self.applyPreviewVisual(scale: 1, alpha: 1)
             window.alphaValue = 1
-            // 恢复焦点到之前的应用
-            if let prevApp = self.previousActiveApp {
-                prevApp.activate(options: .activateIgnoringOtherApps)
-                self.previousActiveApp = nil
-            }
         }
     }
 
