@@ -7,6 +7,8 @@ import QuartzCore
 extension Notification.Name {
     static let launchpadWindowShown = Notification.Name("LaunchpadWindowShown")
     static let launchpadWindowHidden = Notification.Name("LaunchpadWindowHidden")
+    /// 窗口动画开始时触发，通知 LaunchpadView 将焦点切换到搜索框
+    static let launchpadSearchFieldShouldFocus = Notification.Name("LaunchpadSearchFieldShouldFocus")
 }
 
 class BorderlessWindow: NSWindow {
@@ -52,7 +54,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var gestureContinuityProgress: CGFloat?
     private var gesturePreviewActivated = false
     private var isAnimatingWindowTransition = false
-    private let showStartScale: CGFloat = 1.28
+    private let showStartScale: CGFloat = 1.4
     private let previewActivationProgress: CGFloat = 0.08
     private let gestureCompletionProgressThreshold: CGFloat = 0.52
     private let previewSmoothingFactor: CGFloat = 0.42
@@ -151,11 +153,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         applyCornerRadius()
         applyPreviewVisual(scale: 1, alpha: 1)
         window.alphaValue = 1
-        NSApp.activate(ignoringOtherApps: true)
-        window.makeKey()
         lastShowAt = Date()
         NotificationCenter.default.post(name: .launchpadWindowShown, object: nil)
-        window.makeKeyAndOrderFront(nil)
         window.collectionBehavior = [.transient, .canJoinAllApplications, .fullScreenAuxiliary, .ignoresCycle]
         window.orderFrontRegardless()
     }
@@ -226,6 +225,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window.alphaValue = 1
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
+        // 通知 LaunchpadView 让搜索框在动画开始时立即获得焦点
+        NotificationCenter.default.post(name: .launchpadSearchFieldShouldFocus, object: nil)
         window.collectionBehavior = [.transient, .canJoinAllApplications, .fullScreenAuxiliary, .ignoresCycle]
         window.orderFrontRegardless()
 
@@ -304,6 +305,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 window.setFrame(targetRect, display: true)
                 applyCornerRadius()
                 applyPreviewVisual(scale: previewScale(for: smoothedProgress), alpha: previewAlpha(for: smoothedProgress))
+                // 动画一开始就将焦点切换到窗口，让 search field 立即获得焦点
+                NSApp.activate(ignoringOtherApps: true)
+                window.makeKey()
+                NotificationCenter.default.post(name: .launchpadSearchFieldShouldFocus, object: nil)
                 window.orderFrontRegardless()
                 return
             }
@@ -336,10 +341,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         switch mode {
         case .showing where shouldCompleteCurrentGesture():
-            // Ensure the window gets focus immediately when the show animation starts
-            NSApp.activate(ignoringOtherApps: true)
-            window.makeKeyAndOrderFront(nil)
-            window.orderFrontRegardless()
             animatePreviewVisual(toScale: 1, alpha: 1) {
                 self.finalizeShownState()
             }
