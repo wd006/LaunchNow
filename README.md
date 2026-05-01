@@ -6,8 +6,6 @@
 
 <p align="center">
   <strong>An alternative Launchpad application for macOS</strong>
-  <br />
-  <strong>macOS 上的替代 Launchpad 应用</strong>
 </p>
 
 <p align="center">
@@ -16,6 +14,13 @@
   <a href="https://github.com/ggkevinnnn/LaunchNow/releases/latest"><img src="https://img.shields.io/github/v/release/ggkevinnnn/LaunchNow" alt="GitHub Release" /></a>
   <a href="https://github.com/ggkevinnnn/LaunchNow/releases"><img src="https://img.shields.io/github/downloads/ggkevinnnn/LaunchNow/total" alt="Downloads" /></a>
   <a href="https://github.com/ggkevinnnn/LaunchNow/releases/latest"><img src="https://img.shields.io/badge/platform-macOS%2015%2B-blue" alt="Platform" /></a>
+</p>
+
+<!-- Language Switcher -->
+<p align="center">
+  <a href="#readme-en"><kbd> <b>English</b> </kbd></a>
+  <b> · </b>
+  <a href="#readme-zh"><kbd> <b>中文</b> </kbd></a>
 </p>
 
 ---
