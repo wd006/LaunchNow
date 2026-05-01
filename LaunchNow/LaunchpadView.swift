@@ -41,7 +41,6 @@ struct LaunchpadView: View {
     @State private var keyMonitor: Any?
     @State private var windowObserver: NSObjectProtocol?
     @State private var windowHiddenObserver: NSObjectProtocol?
-    @State private var searchFieldFocusObserver: NSObjectProtocol?
     @State private var draggingItem: LaunchpadItem?
     @State private var dragPreviewPosition: CGPoint = .zero
     @State private var dragPreviewScale: CGFloat = 1.2
@@ -421,7 +420,7 @@ struct LaunchpadView: View {
         .background(
             appStore.isGlasseffectEnabled
             ? AnyView(Color.clear.glassEffect(.regular, in: RoundedRectangle(cornerRadius: appStore.isFullscreenMode ? 0 : 30)))
-            : AnyView(Color.clear.background(.thinMaterial, in: RoundedRectangle(cornerRadius: appStore.isFullscreenMode ? 0 : 30)))
+            : AnyView(Color.clear.background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: appStore.isFullscreenMode ? 0 : 30)))
         )
         .ignoresSafeArea()
         .overlay(
@@ -546,7 +545,6 @@ struct LaunchpadView: View {
              setupInitialSelection()
              setupWindowShownObserver()
              setupWindowHiddenObserver()
-             setupSearchFieldFocusObserver()
              // 监听全局鼠标抬起，确保拖拽状态被正确清理（窗口外释放时）
              if let existing = globalMouseUpMonitor { NSEvent.removeMonitor(existing) }
              globalMouseUpMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseUp]) { _ in
@@ -888,6 +886,7 @@ extension LaunchpadView {
         windowObserver = NotificationCenter.default.addObserver(forName: .launchpadWindowShown, object: nil, queue: .main) { _ in
             isKeyboardNavigationActive = false
             selectedIndex = 0
+            isSearchFieldFocused = true
             if !appStore.apps.isEmpty {
                 appStore.applyOrderAndFolders()
             }
@@ -901,15 +900,6 @@ extension LaunchpadView {
         }
         windowHiddenObserver = NotificationCenter.default.addObserver(forName: .launchpadWindowHidden, object: nil, queue: .main) { _ in
             selectedIndex = 0
-        }
-    }
-    
-    private func setupSearchFieldFocusObserver() {
-        if let observer = searchFieldFocusObserver {
-            NotificationCenter.default.removeObserver(observer)
-        }
-        searchFieldFocusObserver = NotificationCenter.default.addObserver(forName: .launchpadSearchFieldShouldFocus, object: nil, queue: .main) { _ in
-            isSearchFieldFocused = true
         }
     }
     
@@ -2135,7 +2125,7 @@ struct GridConfig {
     let columnSpacing: CGFloat = 24
     
     struct PageNavigation {
-        let edgeFlipMargin: CGFloat = 5
+        let edgeFlipMargin: CGFloat = 2
         let autoFlipInterval: TimeInterval = 0.2 // 拖拽贴边翻页两次之间间隔
         let scrollPageThreshold: CGFloat = 0.75
         let scrollFinishThreshold: CGFloat = 0.5
