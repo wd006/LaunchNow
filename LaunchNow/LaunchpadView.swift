@@ -756,32 +756,8 @@ struct LaunchpadView: View {
 
     private func finalizeHandoffDrag() {
         guard !isSettlingDrop else { return }
-        isSettlingDrop = true
         guard draggingItem != nil else { return }
         stopDragContinuationMonitor()
-        defer {
-            if let monitor = handoffEventMonitor { NSEvent.removeMonitor(monitor); handoffEventMonitor = nil }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                draggingItem = nil
-                pendingDropIndex = nil
-                clampSelection()
-                // 重置翻页状态
-                resetDragPagingState()
-                // 重置拖拽创建文件夹相关状态，确保后续拖拽功能正常
-                appStore.isDragCreatingFolder = false
-                appStore.folderCreationTarget = nil
-                clearHoveringState()
-                // 与普通拖拽结束保持一致的清理
-                appStore.cleanupUnusedNewPage()
-                appStore.removeEmptyPages()
-                appStore.pruneEmptyFolders()
-                appStore.saveAllOrder()
-                // 触发网格刷新，确保拖拽手势被正确重新添加
-                appStore.triggerGridRefresh()
-                isSettlingDrop = false
-                dragPreviewOpacity = 1.0
-            }
-        }
         // 在接力拖拽模式下，落点时再计算目标索引，过程中不展示吸附
         if isHandoffDragging && pendingDropIndex == nil {
             if let idx = indexAt(point: dragPreviewPosition,
@@ -801,11 +777,10 @@ struct LaunchpadView: View {
         withAnimation(LNAnimations.easeInOut) {
             dragPreviewOpacity = 0.0
         }
-        // 使用统一的拖拽结束处理逻辑
+        // 让 finalizeDragOperation 处理落点排序逻辑（它内部会设置 isSettlingDrop）
         finalizeDragOperation(containerSize: currentContainerSize, columnWidth: currentColumnWidth, appHeight: currentAppHeight, iconSize: currentIconSize)
-        
-        // 立即触发网格刷新，确保拖拽手势被正确重新添加
-        appStore.triggerGridRefresh()
+
+        if let monitor = handoffEventMonitor { NSEvent.removeMonitor(monitor); handoffEventMonitor = nil }
     }
 
     private func navigateToPage(_ targetPage: Int, animated: Bool = true) {
@@ -841,7 +816,6 @@ struct LaunchpadView: View {
 
     // Use the same settle model as normal precise scroll so drag edge-flip looks identical.
     private func performSmoothPageFlipDuringDrag(to targetPage: Int, pageWidth: CGFloat) -> Bool {
-        guard !isDragEdgeFlipping else { return false }
         let sourcePage = appStore.currentPage
         guard targetPage != sourcePage else { return false }
 
@@ -1830,9 +1804,11 @@ extension LaunchpadView {
             let currentPageEndExclusive = min(currentPageStart + itemsPerPage, appStore.items.count)
             let currentPageLastIndex = max(currentPageStart, currentPageEndExclusive - 1)
 
-            // Drop must always resolve on CURRENT page.
-            // If pointer is not aligned to a grid cell, snap to current page tail.
+            // Use pendingDropIndex if already set during drag, otherwise compute from pointer position
             let resolvedCurrentPageIndex: Int = {
+                if let pending = pendingDropIndex, pending >= 0, pending < appStore.items.count {
+                    return pending
+                }
                 if let idx = indexAt(point: dragPreviewPosition,
                                      in: containerSize,
                                      pageIndex: appStore.currentPage,
@@ -2137,7 +2113,7 @@ struct GridConfig {
     
     struct PageNavigation {
         let edgeFlipMargin: CGFloat = 2
-        let autoFlipInterval: TimeInterval = 0.2 // 拖拽贴边翻页两次之间间隔
+        let autoFlipInterval: TimeInterval = 0.5 // 拖拽贴边翻页两次之间时间间隔
         let scrollPageThreshold: CGFloat = 0.75
         let scrollFinishThreshold: CGFloat = 0.5
     }
