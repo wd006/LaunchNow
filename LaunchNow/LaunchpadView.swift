@@ -420,7 +420,7 @@ struct LaunchpadView: View {
         .background(
             appStore.isGlasseffectEnabled
             ? AnyView(Color.clear.glassEffect(.regular, in: RoundedRectangle(cornerRadius: appStore.isFullscreenMode ? 0 : 30)))
-            : AnyView(Color.clear.background(.thinMaterial, in: RoundedRectangle(cornerRadius: appStore.isFullscreenMode ? 0 : 30)))
+            : AnyView(Color.clear.background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: appStore.isFullscreenMode ? 0 : 30)))
         )
         .ignoresSafeArea()
         .overlay(
@@ -2125,7 +2125,7 @@ struct GridConfig {
     let columnSpacing: CGFloat = 24
     
     struct PageNavigation {
-        let edgeFlipMargin: CGFloat = 5
+        let edgeFlipMargin: CGFloat = 2
         let autoFlipInterval: TimeInterval = 0.2 // 拖拽贴边翻页两次之间间隔
         let scrollPageThreshold: CGFloat = 0.75
         let scrollFinishThreshold: CGFloat = 0.5
