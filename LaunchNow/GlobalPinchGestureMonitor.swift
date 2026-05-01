@@ -78,8 +78,8 @@ final class GlobalPinchGestureMonitor {
     private var session = PinchSession()
 
     private let minimumTouchCount = 4
-    private let pinchInRatioThreshold: CGFloat = 0.9
-    private let pinchOutRatioThreshold: CGFloat = 1.1
+    private let pinchInRatioThreshold: CGFloat = 0.85
+    private let pinchOutRatioThreshold: CGFloat = 1.15
     private let triggerCooldown: TimeInterval = 0.2
     private let radiusFilterFactor: CGFloat = 0.20
     private let progressDeadZone: CGFloat = 0.015
